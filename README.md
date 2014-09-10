@@ -1,4 +1,9 @@
-lncFilter v1.0
+slncky v1.0
+
+This code was developed using Python v2.7.  slncky WILL NOT work with Python v3.0.  To check what version of python you are running, run python --version in your terminal.
+
+
+//Dependencies
 
 This code depends on the following three software:
 

@@ -30,7 +30,7 @@ def checkDependencies():
 
 	out = out.split()
 	version = out[1][1:].split(".")
-	if int(version[1]) < 17:
+	if int(version[0]) > 2 or int(version[1]) < 17:
 		sys.exit("ERROR: The version of bedtools you have installed is too old. You must have bedtools v2.17.0 or higher in your path! Exiting...")
 
 	#check lastz
@@ -1041,11 +1041,11 @@ def writeWebsite(ANNOTS, out, ogLncs, SENSE_FILTER, ANTISENSE_FILTER, SENSE_MAPP
 
 	#html.write("</body></html>")
 def main():
-	parser = argparse.ArgumentParser(description='Filter transcripts for bona fide lncRNAs')
+	parser = argparse.ArgumentParser(description='Filter transcripts for bona fide lncRNAs and searches for orthologs')
 	parser.add_argument('bedfile', type=str, help='bed12 file of transcripts')
 	parser.add_argument('assembly', type=str, help='assembly')
 	parser.add_argument('out_prefix', type=str, help='out_prefix')
-	parser.add_argument('--config', type=str, help='path to assembly.config file. default uses config file in same directory as lncFilter')
+	parser.add_argument('--config', type=str, help='path to assembly.config file. default uses config file in same directory as slncky')
 	parser.add_argument('--sense_min', type=float, help='min exonic overlap to filter out sense overlapping transcript, default = 0', default = 0)
 	parser.add_argument('--antisense_min', type=float, help='min exonic overlap to filter out antisense overlapping transcript, default = 0.3', default=0.3)
 	parser.add_argument('--coding_blast_min', type=float, help='min exonic identity to filter out transcript that blasts to orthologous coding gene. default = 0.1', default=0.1)
