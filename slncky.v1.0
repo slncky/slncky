@@ -1139,7 +1139,7 @@ def main():
 		REPEAT_CONTENT = []
 
 		lncs, SMALL_FILTER, numRemoved = removeSmallGenes(lncs)
-		print "        ... %d transcripts <200bp" % numRemoved
+		print "        ... %d transcripts shorter than 200bp" % numRemoved
 
 		#REPEAT_CONTENT
 		if "REPEAT_MASKER" in ANNOTS:
