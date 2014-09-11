@@ -155,9 +155,18 @@ def splitToExons(lncs):
 
 	return lncExonPath, lncSize
 
+def removeSmallGenes(lncs):
+	FILTER = []
+	
+	for lnc, entry in lncs.iteritems():
+		entry = entry.split()
+		if (int(entry[2]) - int(entry[1]) < 200): FILTER.append([lnc])
+	
+	newLncs, numRemoved = removeLncs(lncs, FILTER)
+	return newLncs, FILTER, numRemoved
+
 def removeOverlap(lncs, annots, args, min):
 	FILTER = []
-
 	lncExonPath, lncSize = splitToExons(lncs)
 
 	cmd = INTERSECTBED
@@ -1064,10 +1073,11 @@ def main():
 	
 	global REALPATH
 	global ALIGNTRANSCRIPTS
-	REALPATH = os.path.realpath(__file__)[0:-9]
+	REALPATH = os.path.realpath(__file__)[0:-6]
 	ALIGNTRANSCRIPTS = REALPATH+"alignTranscripts"
 	if args.config is None: args.config = REALPATH+"annotations.config"
 
+	print args.config
 
 	if args.bedtools_path is not None:
 		global FASTAFROMBED
@@ -1118,6 +1128,7 @@ def main():
 
 		print "Removing..."
 		#INITIALIZE FILTERS
+		SMALL_FILTER = []
 		SENSE_FILTER = []
 		ANTISENSE_FILTER = []
 		SENSE_MAPPED_CODING_FILTER = []
@@ -1126,6 +1137,9 @@ def main():
 		SELF_BLAST_FILTER = []
 		REPEAT_FILTER = []
 		REPEAT_CONTENT = []
+
+		lncs, SMALL_FILTER, numRemoved = removeSmallGenes(lncs)
+		print "        ... %d transcripts <200bp" % numRemoved
 
 		#REPEAT_CONTENT
 		if "REPEAT_MASKER" in ANNOTS:
@@ -1180,6 +1194,9 @@ def main():
 			ucsc.write("track name=overlapping transcripts type=bed visibility=2\n")
 		
 		filtered = open(args.out_prefix+".filtered.txt", 'w')
+		for x in SMALL_FILTER:
+			filtered.write("%s\tless than 200 basepairs\n" % x[0])
+
 		for x in SENSE_FILTER:
 			filtered.write("%s\t%.1f%% exonic overlap with coding transcript %s in same orientation\n" % (x[0], x[2]*100.0, x[1]))
 			if not args.no_website and x[0] not in ucscSet:
