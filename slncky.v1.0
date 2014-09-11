@@ -1073,7 +1073,7 @@ def main():
 	
 	global REALPATH
 	global ALIGNTRANSCRIPTS
-	REALPATH = os.path.realpath(__file__)[0:-6]
+	REALPATH = os.path.realpath(__file__)[0:-11]
 	ALIGNTRANSCRIPTS = REALPATH+"alignTranscripts"
 	if args.config is None: args.config = REALPATH+"annotations.config"
 
