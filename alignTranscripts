@@ -11,6 +11,12 @@ LASTZ = 'lastz'
 BEDTOOLS = 'bedtools'
 FASTAFROMBED = 'fastaFromBed'
 
+def checkDependencies(program):
+	try:
+		subprocess.check_call([program, '--help'])
+	except OSError:
+		print("%s not found." % program)
+		sys.exit(0)	
 
 def intArray(array):
 	for i in range(len(array)):
@@ -28,7 +34,6 @@ def convertToGeneCoords(base, exonSizes, exonStarts, numExons):
 
 def inExon(base, exonStarts, exonSizes, numExons, strand, geneSize):
 	#print strand
-	if strand == "-": base = geneSize - base
 	for i in range(numExons):
 		if (base >= exonStarts[i] and base < (exonStarts[i] + exonSizes[i])):
 			return True
@@ -81,6 +86,25 @@ def main():
 		global LASTZ
 		LASTZ = args.lastz_path+"/lastz"
 
+	genomeA = {}
+	if os.path.exists(args.genomeFastaA+".fai"):
+		genome = open(args.genomeFastaA+".fai", 'r')
+		for line in genome.readlines():
+			line = line.split()
+			genomeA[line[0].strip()] = int(line[1])
+	else:
+		print "Fasta index for %s does not exist.  Please run samtools faidx %s. Exiting..." % (args.genomeFastaA, args.genomeFastaA)
+		sys.exit(1)
+
+	genomeB = {}
+	if os.path.exists(args.genomeFastaB+".fai"):
+		genome = open(args.genomeFastaB+".fai", 'r')
+		for line in genome.readlines():
+			line = line.split()
+			genomeB[line[0].strip()] = int(line[1])
+	else:
+		print "Fasta index for %s does not exist.  Please run samtools faidx %s. Exiting..." % (args.genomeFastaB, args.genomeFastaB)
+		sys.exit(1)
 
 	alignment = open(args.out_prefix+".alignment_identity.txt", 'w')
 	mafout = open(args.out_prefix+".maf", 'w')	
@@ -178,6 +202,10 @@ def main():
 	stringA = ""
 	baseB = -1
 	baseA = -1
+	truncA = ""
+	truncB = ""
+	truncAStart = -1
+	truncBStart = -1
 
 	counter = 0
 	
@@ -204,8 +232,10 @@ def main():
 				stringB = sB[6].strip()
 				baseB = int(sB[2])
 				dirB = sB[4].strip()
+
 		#at line break, reset
 		if line == "" and stringA !="":
+			#print exonId, id
 			if exonId == 0 and id == 0:
 				counter = counter - 1
 			else:
@@ -213,49 +243,46 @@ def main():
 				#write maf
 				mafout.write(a+"\n")
 				
-				sA[1] = chrA 
-				start = int(sA[2])
-				if (dirA == "+"): start = geneAStart - args.pad + start
-				else: start = geneAEnd + args.pad - start
-				sA[2] = str(start)
-
-				mafout.write(sA[0])
-				for i in range(len(sA)-1):
-					mafout.write(" "+sA[i+1])
+				if (dirA == "-"): truncAStart = genomeA[chrA] - truncAStart
+				mafout.write("s %s %d %d %s %d %s\n" % (chrA, truncAStart, len(truncA.replace("-", "")), dirA, genomeA[chrA], truncA))
+			
+				if (dirB == "-"): truncBStart = genomeB[chrB] - truncBStart
+				mafout.write("s %s %d %d %s %d %s\n" % (chrB, truncBStart, len(truncB.replace("-", "")), dirB, genomeB[chrB], truncB))
+				
 				mafout.write("\n")
-
-				sB[1] = chrB
-				start = int(sB[2])
-				if (dirB == "+"): start = geneBStart - args.pad + start
-				else: start = geneBEnd + args.pad - start
-				sB[2] = str(start)
-
-				mafout.write(sB[0])
-				for i in range(len(sB)-1):
-					mafout.write(" "+sB[i+1])
-				mafout.write("\n\n")
 
 
 			exonId = 0
 			id = 0
 			stringB = ""
 			stringA = ""
+			truncA = ""
+			truncB = ""
+			truncAStart = -1
+			truncBStart = -1
 
 		if stringB != "" and stringA !="":
 			for i in range(len(stringA)):
 				if dirA == "+":
 					baseARel = baseA - args.pad
-					baseAGen = geneAStart - args.pad + baseA
+					baseAGen = geneAStart - args.pad + baseA + 1
 				else:
 					baseARel = geneASize + args.pad - baseA
 					baseAGen = geneAEnd + args.pad - baseA
 
 				if dirB == "+":
 					baseBRel = baseB - args.pad
-					baseBGen = geneBStart - args.pad + baseB
+					baseBGen = geneBStart - args.pad + baseB + 1
 				else:
 					baseBRel = geneBSize + args.pad - baseB
 					baseBGen = geneBEnd + args.pad - baseB
+
+				if baseARel >= -1000 and baseBRel >=-1000 and baseARel < geneASize+1000 and baseBRel < geneBSize+1000:
+					if truncA == "":
+						truncAStart = baseAGen
+						truncBStart = baseBGen
+					truncA += stringA[i]
+					truncB += stringB[i]
 
 				if stringB[i]==stringA[i] and baseARel >= 0 and baseARel < geneASize and stringB[i] != "-" and baseBRel >= 0 and baseBRel < geneBSize:
 					id += 1
@@ -264,6 +291,7 @@ def main():
 
 				if stringB[i] !="-":
 					baseB += 1
+
 				if stringA[i] !="-": 
 					baseA += 1
 
