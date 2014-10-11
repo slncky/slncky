@@ -195,7 +195,7 @@ def removeOverlap(lncs, annots, args, min):
 			lnc = pair[0]
 			gene = pair[1]
 			overlap = overlap*1.0 / lncSize[lnc]
-			if overlap > min:
+			if overlap >= min:
 				FILTER.append([lnc, gene, overlap, file])
 	
 	os.remove(lncExonPath)	
@@ -1062,7 +1062,7 @@ def main():
 	parser.add_argument('--selfblast_identity_min', '-sbi', type=float, help='min identity when blasting for duplications within transcript. default=0.5', default=0.5)
 	parser.add_argument('--repeat_min', '-r', type=float, help='min repeat content. default = 0.97', default=0.97)
 	parser.add_argument('--noncoding_blast_min', type=float, help='min exonic identity to filter out transcript that blasts to orthologous noncoding gene. default=0', default=0.0)
-	parser.add_argument('--threads', '-n', type=int, help='number of threads', default=1)
+	parser.add_argument('--threads', '-n', type=int, help='number of threads. default = 5', default=5)
 	parser.add_argument('--bedtools_path', type=str, help='path to bedtools')
 	parser.add_argument('--liftover_path', type=str, help='path to liftOver')
 	parser.add_argument('--lastz_path', type=str, help='path to lastz')
@@ -1131,12 +1131,36 @@ def main():
 		SMALL_FILTER = []
 		SENSE_FILTER = []
 		ANTISENSE_FILTER = []
+		WITHIN_FILTER = []
 		SENSE_MAPPED_CODING_FILTER = []
 		ANTISENSE_MAPPED_CODING_FILTER = []
 		CODING_BLAST_FILTER = []
 		SELF_BLAST_FILTER = []
 		REPEAT_FILTER = []
 		REPEAT_CONTENT = []
+		#INTERSECT WITH CODING GENES
+		if "CODING" in ANNOTS:
+			#lncs, SENSE_FILTER, numRemoved = removeSenseOverlap(lncs, ANNOTS)
+			
+			lncs, SENSE_FILTER, numRemoved = removeOverlap(lncs, ANNOTS["CODING"], ['-s', '-split'], args.sense_min)
+
+			print "        ... %d transcripts that overlap >%d%% with coding transcript (sense)" % (numRemoved, int(args.sense_min*100))
+
+			#lncs, ANTISENSE_FILTER, numRemoved = removeAntisenseOverlap(lncs, ANNOTS)
+			lncs, ANTISENSE_FILTER, numRemoved = removeOverlap(lncs, ANNOTS["CODING"], ['-S', '-split'], args.antisense_min)
+			print "        ... %d transcripts that overlap >%d%% with coding transcript (antisense)" % (numRemoved, int(args.antisense_min*100))
+			
+			lncs, WITHIN_FILTER, numRemoved = removeOverlap(lncs, ANNOTS["CODING"], [], 1)
+			print "        ... %d transcripts that fall within coding transcript" % (numRemoved)
+
+
+		if "MAPPED_CODING" in ANNOTS:
+			lncs, SENSE_MAPPED_CODING_FILTER, numRemoved = removeOverlap(lncs, ANNOTS["MAPPED_CODING"], ['-s', '-split'], args.sense_min)
+			print "        ... %d transcripts that overlap >%d%% with mapped coding transcript (sense)" % (numRemoved, int(args.sense_min*100))
+		
+			lncs, ANTISENSE_MAPPED_CODING_FILTER, numRemoved = removeOverlap(lncs, ANNOTS["MAPPED_CODING"], ['-S', '-split'], args.antisense_min)
+			print "        ... %d transcripts that overlap >%d%% with mapped coding transcript (antisense)" % (numRemoved, int(args.antisense_min*100))
+
 
 		lncs, SMALL_FILTER, numRemoved = removeSmallGenes(lncs)
 		print "        ... %d transcripts shorter than 200bp" % numRemoved
@@ -1147,37 +1171,18 @@ def main():
 			lncs, numRemoved = removeLncs(lncs, REPEAT_FILTER)
 			print "        ... %d transcripts with >97%% repeat content" % numRemoved
 
-		#INTERSECT WITH CODING GENES
-		if "CODING" in ANNOTS:
-			#lncs, SENSE_FILTER, numRemoved = removeSenseOverlap(lncs, ANNOTS)
-			
-			lncs, SENSE_FILTER, numRemoved = removeOverlap(lncs, ANNOTS["CODING"], ['-s', '-split'], args.sense_min)
-
-			print "        ... %d transcripts that overlap >0%% with coding transcript (sense)" % numRemoved
-
-			#lncs, ANTISENSE_FILTER, numRemoved = removeAntisenseOverlap(lncs, ANNOTS)
-			lncs, ANTISENSE_FILTER, numRemoved = removeOverlap(lncs, ANNOTS["CODING"], ['-S', '-split'], args.antisense_min)
-			print "        ... %d transcripts that overlap >30%% with coding transcript (antisense)" % numRemoved
-		
-		if "MAPPED_CODING" in ANNOTS:
-			lncs, SENSE_MAPPED_CODING_FILTER, numRemoved = removeOverlap(lncs, ANNOTS["MAPPED_CODING"], ['-s', '-split'], args.sense_min)
-			print "        ... %d transcripts that overlap >0%% with mapped coding transcript (sense)" % numRemoved
-		
-			lncs, ANTISENSE_MAPPED_CODING_FILTER, numRemoved = removeOverlap(lncs, ANNOTS["MAPPED_CODING"], ['-S', '-split'], args.antisense_min)
-			print "        ... %d transcripts that overlap >30%% with mapped coding transcript (antisense)" % numRemoved
-
 
 		#BLAST TO CODING ORTHOLOGS
 		if "ORTHOLOG" in ANNOTS and "LIFTOVER" in ANNOTS and "GENOME_FA" in ANNOTS and "GENOME_FA" in ORTH_ANNOTS and "CODING" in ORTH_ANNOTS:
 			CODING_BLAST_FILTER = blastToOrtholog(lncs, ANNOTS, ORTH_ANNOTS, "CODING", args.coding_blast_min, args.threads)
 			lncs, numRemoved = removeLncs(lncs, CODING_BLAST_FILTER)
-			print "\r        ... %d transcripts that blast >10%% to ortholog coding transcript" % numRemoved	
+			print "\r        ... %d transcripts that blast >%d%% to ortholog coding transcript" % (numRemoved, int(args.coding_blast_min*100))
 
 		#SELF-BLAST TO FIND DUPLICATIONS
 		if "GENOME_FA" in ANNOTS:
 			lncs, SELF_BLAST_FILTER, numRemoved = selfBlast(lncs, ANNOTS, args.selfblast_coverage_min, args.selfblast_identity_min, args.threads)
 			#lncs, numRemoved = removeLncs(lncs, SELF_BLAST_FILTER) 
-			print "\r        ... %d transcripts that blast >50%% to another transcript in input file" % numRemoved	
+			print "\r        ... %d transcripts that blast >%d%% to another transcript in input file" % (numRemoved, int(args.selfblast_identity_min*100))
 		
 		#WRITE FILTERED DATA
 		
@@ -1204,6 +1209,11 @@ def main():
 				ucscSet.add(x[0])
 		for x in ANTISENSE_FILTER:
 			filtered.write("%s\t%.1f%% exonic overlap with coding transcript %s in opposite orientation\n" % (x[0], x[2]*100.0, x[1]))
+			if not args.no_website and  x[0] not in ucscSet:
+				ucsc.write(ogLncs[x[0]])
+				ucscSet.add(x[0])
+		for x in WITHIN_FILTER:
+			filtered.write("%s\ttranscript entirely within coding transcript %s\n" % (x[0], x[1]))
 			if not args.no_website and  x[0] not in ucscSet:
 				ucsc.write(ogLncs[x[0]])
 				ucscSet.add(x[0])
