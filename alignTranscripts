@@ -10,13 +10,31 @@ import subprocess
 LASTZ = 'lastz'
 BEDTOOLS = 'bedtools'
 FASTAFROMBED = 'fastaFromBed'
-
-def checkDependencies(program):
+SHUFFLEBED = 'shuffleBed'
+def checkDependencies():
+	#check bedtools version
+	cmd = [BEDTOOLS, '--version']
 	try:
-		subprocess.check_call([program, '--help'])
-	except OSError:
-		print("%s not found." % program)
-		sys.exit(0)	
+		out = subprocess.check_output(cmd)
+	except:
+		sys.exit("ERROR: bedtools not installed! You must have bedtools v2.17.0 or higher in your path! Exiting...")
+
+	out = out.split()
+	version = out[1][1:].split(".")
+	if int(version[0]) > 2 or int(version[1]) < 17:
+		sys.exit("ERROR: The version of bedtools you have installed is too old. You must have bedtools v2.17.0 or higher in your path! Exiting...")
+
+	#check lastz
+	cmd = [LASTZ, '--version']
+	try:
+		p = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+	except:
+		sys.exit("ERROR: lastz not installed! You must have lastz in your path! Exiting...")
+
+	out = p.stdout.read()
+	out = out.split()
+	if out[0].strip() != "lastz":
+		sys.exit("ERROR: lastz not installed! You must have lastz in your path! Exiting...")
 
 def intArray(array):
 	for i in range(len(array)):
@@ -36,8 +54,17 @@ def inExon(base, exonStarts, exonSizes, numExons, strand, geneSize):
 	#print strand
 	for i in range(numExons):
 		if (base >= exonStarts[i] and base < (exonStarts[i] + exonSizes[i])):
-			return True
-	return False
+			if strand == "+": return i+1
+			else: return numExons-i
+	return -1
+
+def inIntron(base, exonStarts, exonSizes, numExons, strand, geneSize):
+	#print strand
+	for i in range(numExons-1):
+		if (base > (exonStarts[i] + exonSizes[i]) and base < exonStarts[i+1]):
+			return exonStarts[i+1] - (exonStarts[i] + exonSizes[i])
+	return -1
+
 
 def writePaddedBed(gene, pad):
 	gene[1] = max(0, int(gene[1])-pad)
@@ -48,12 +75,62 @@ def writePaddedBed(gene, pad):
 	tmp.write("%s\t%i\t%i\t%s\n" % (gene[0], gene[1], gene[2], gene[3]))
 	return tmpPath
 
+def writeBed(gene):
+	tmpFd, tmpPath = tempfile.mkstemp()
+	tmp = os.fdopen(tmpFd, 'w')
+	tmp.write("%s" % gene[0])
+	for i in range(11):
+		tmp.write("\t%s" % gene[i+1])
+	tmp.write("\n")
+	return tmpPath
+
 def getFa(bed, fasta):
 	tmpFd, tmpPath = tempfile.mkstemp()
 	#cmd = "%s -fi %s -bed %s -fo %s -name" % (FASTAFROMBED, fasta, bed, tmpPath)
 	cmd = [FASTAFROMBED, "-fi", fasta, "-bed", bed, "-fo", tmpPath, "-name"]
 	subprocess.check_call(cmd)
 	return tmpPath
+
+def alignFa(paddedAFaPath, paddedBFaPath, unmask, gap_open, gap_extend):
+	tmpFd, tmpPath = tempfile.mkstemp()
+	if unmask:
+		cmd = [LASTZ, paddedAFaPath+"[unmask]", paddedBFaPath+"[unmask]", '--format=maf', '--output=%s' % tmpPath, '--chain', '--gap=%d,%d' %(gap_open, gap_extend)]
+	else:
+		cmd = [LASTZ, paddedAFaPath, paddedBFaPath, '--format=maf', '--output=%s' % tmpPath, '--chain', '--gap=%d,%d' %(gap_open, gap_extend)]
+	
+	nullFd, nullPath = tempfile.mkstemp()
+	null = open(nullPath, 'w')
+
+	subprocess.check_call(cmd, stderr = null)
+	null.close()
+	cmd = ['rm', nullPath]
+	subprocess.check_call(cmd)
+
+	return tmpPath
+
+def categorizeLnc(alignments, numExonsA, numExonsB):
+	exonsAlignedA = set()
+	exonsAlignedB = set()
+	maxExonId = 0
+	maxIntronId = 0
+
+	for a in alignments:
+		for exon in a[6]: exonsAlignedA.add(exon)
+		for exon in a[7]: exonsAlignedB.add(exon)
+		if a[3] > maxExonId: 
+			maxExonId = a[3]
+			maxIntronId = a[5]
+	
+	if (len(exonsAlignedA) == 1 or len(exonsAlignedB) == 1) and (numExonsA!=1 and numExonsB!=1): 
+		if maxExonId >=0.1: return "divergent"
+		else: return "divergent/bad_alignment"
+	if maxExonId < 0.1: return "mir_host/bad_alignment"
+	if maxExonId >= 0.2:
+		if maxIntronId >= 0.1: return "sno_host"
+		else: return "intergenic"
+	else:
+		if maxIntronId >=0.05: return "sno_host"
+		else: return "intergenic"
 
 def main():
 	parser = argparse.ArgumentParser(description='''
@@ -70,21 +147,26 @@ def main():
 	parser.add_argument('--pad', type=int, default=15000)
 	parser.add_argument('--gap_open', type=int, default=250)
 	parser.add_argument('--gap_extend', type=int, default=30)
-	parser.add_argument('--unmask', action='store_true', help='mask repeats when aligning')
+	parser.add_argument('--unmask', action='store_true', help='unmask repeats when aligning')
 	parser.add_argument('--bedtools_path', type=str)
 	parser.add_argument('--lastz_path', type=str)
+	parser.add_argument('--shuffle_bg', action='store_true', help='Aligns genes to random background and removes nonsignificant alignments')
 
 	args = parser.parse_args()
 
 	if args.bedtools_path is not None:
 		global BEDTOOLS
 		global FASTAFROMBED
+		global SHUFFLEBED
 		BEDTOOLS  = args.bedtools_path+"/bedtools"
 		FASTAFROMBED = args.bedtools_path+"/fastaFromBed"
-	
+		SHUFFLEBED = args.bedtools_path+"shuffleBed"
+
 	if args.lastz_path is not None:
 		global LASTZ
 		LASTZ = args.lastz_path+"/lastz"
+	
+	checkDependencies()
 
 	genomeA = {}
 	if os.path.exists(args.genomeFastaA+".fai"):
@@ -144,29 +226,59 @@ def main():
 	paddedAFaPath = getFa(paddedABedPath, args.genomeFastaA)
 	paddedBFaPath = getFa(paddedBBedPath, args.genomeFastaB)
 
-	#lastz
-	#cmd = "%s %s %s --format=maf --chain --gap=%d,%d" % (LASTZ, paddedAFaPath, paddedBFaPath, args.gap_open, args.gap_extend)
 
-	tmpFd, tmpPath = tempfile.mkstemp()
-	if args.unmask:
-		cmd = [LASTZ, paddedAFaPath+"[unmask]", paddedBFaPath+"[unmask]", '--format=maf', '--output=%s' % tmpPath, '--chain', '--gap=%d,%d' %(args.gap_open, args.gap_extend)]
-	else:
-		cmd = [LASTZ, paddedAFaPath, paddedBFaPath, '--format=maf', '--output=%s' % tmpPath, '--chain', '--gap=%d,%d' %(args.gap_open, args.gap_extend)]
-	
-	nullFd, nullPath = tempfile.mkstemp()
-	null = open(nullPath, 'w')
+	#MAKE BACKGROUND
+	if args.shuffle_bg:
+		shuffleScores = [0]
 
-	subprocess.check_call(cmd, stderr = null)
-	null.close()
+		bedB = writeBed(geneB)
+		for i in range(10):
+			#shuffle geneA
+			cmd = [SHUFFLEBED, '-i', bedB, '-g', args.genomeFastaB+".fai"]
+			shuffle = subprocess.check_output(cmd)
+			shuffle = shuffle.split()
+			paddedShuffleBed = writePaddedBed(shuffle, args.pad)
+			paddedShuffleFa = getFa(paddedShuffleBed, args.genomeFastaB)
+			
+			#align geneA to shuffled
+			mafPath = alignFa(paddedAFaPath, paddedShuffleFa, args.unmask, args.gap_open, args.gap_extend)
+			mafFile = open(mafPath, 'r')
+			maf = mafFile.readlines()
+			for line in maf:
+				if line.startswith("a"): shuffleScores.append(int(line.split("=")[1]))
+			cmd = ['rm', mafPath, paddedShuffleBed, paddedShuffleFa]
+			subprocess.check_call(cmd)
 
-	mafFile = open(tmpPath, 'r')
+		bedA = writeBed(geneA)
+		for i in range(10):
+			#shuffle geneB
+			cmd = [SHUFFLEBED, '-i', bedA, '-g', args.genomeFastaA+".fai"]
+			shuffle = subprocess.check_output(cmd)
+			shuffle = shuffle.split()
+			paddedShuffleBed = writePaddedBed(shuffle, args.pad)
+			paddedShuffleFa = getFa(paddedShuffleBed, args.genomeFastaA)
+			
+			#align geneB to shuffled
+			mafPath = alignFa(paddedBFaPath, paddedShuffleFa, args.unmask, args.gap_open, args.gap_extend)
+			mafFile = open(mafPath, 'r')
+			maf = mafFile.readlines()
+			for line in maf:
+				if line.startswith("a"): shuffleScores.append(int(line.split("=")[1]))
+			cmd = ['rm', mafPath, paddedShuffleBed, paddedShuffleFa]
+			subprocess.check_call(cmd)
+
+		cmd = ['rm', bedB, bedA]
+		subprocess.check_call(cmd)
+
+		maxShuffleScore = max(shuffleScores)
+	#ALIGN GENES OF INTEREST
+	mafPath = alignFa(paddedAFaPath, paddedBFaPath, args.unmask, args.gap_open, args.gap_extend)
+
+	mafFile = open(mafPath, 'r')
 	maf = mafFile.readlines()
 	mafFile.close()
-	#maf, err = proc.communicate()
-	#maf =  maf.split("\n")	
-	#print maf
 
-	cmd = ['rm', paddedABedPath, paddedBBedPath, paddedAFaPath, paddedBFaPath, tmpPath, nullPath]
+	cmd = ['rm', paddedABedPath, paddedBBedPath, paddedAFaPath, paddedBFaPath, mafPath]
 	subprocess.check_call(cmd)	
 	
 	chrA = geneA[0].strip()
@@ -181,6 +293,9 @@ def main():
 	exonASize = 0
 	for i in range(numExonsA):
 		exonASize += exonSizesA[i]
+	intronASize = 0
+	for i in range(numExonsA):
+		intronASize += exonStartsA[i]
 
 	chrB = geneB[0].strip()
 	geneBStart = int(geneB[1])+args.pad
@@ -197,7 +312,9 @@ def main():
 	
 	id = 0
 	exonId = 0
-
+	intronId = 0
+	maxIntronId = 0
+	maxIntronNum = 0
 	stringB = ""
 	stringA = ""
 	baseB = -1
@@ -206,10 +323,12 @@ def main():
 	truncB = ""
 	truncAStart = -1
 	truncBStart = -1
+	exonsAlignedA = []
+	exonsAlignedB = []
+	alignments = []
 
 	counter = 0
 	
-	alignment.write("alignmentID\tgeneA\tgeneB\texonID\tgeneID\n")
 
 	for line in maf:
 		line = line.strip()
@@ -219,8 +338,7 @@ def main():
 		if line.startswith("a"): 
 			counter = counter + 1
 			a = line
-			score = line.split("=")[1]
-		
+			score = int(line.split("=")[1])
 		if line.startswith("s"):
 			if stringA == "":
 				sA = line.split()
@@ -239,27 +357,47 @@ def main():
 			if exonId == 0 and id == 0:
 				counter = counter - 1
 			else:
-				alignment.write("%d\t%s\t%s\t%0.3f\t%0.3f\n" % (counter, geneAName, geneBName, exonId / (exonASize*1.0), id / (geneASize*1.0)))
-				#write maf
-				mafout.write(a+"\n")
-				
-				if (dirA == "-"): truncAStart = genomeA[chrA] - truncAStart
-				mafout.write("s %s %d %d %s %d %s\n" % (chrA, truncAStart, len(truncA.replace("-", "")), dirA, genomeA[chrA], truncA))
+				if (args.shuffle_bg and score > maxShuffleScore) or (not args.shuffle_bg):
+					if maxIntronNum ==0:
+						#alignment.write("%d\t%s\t%s\t%0.3f\t%0.3f\tNA\t" % (counter, geneAName, geneBName, exonId / (exonASize*1.0), id / (geneASize*1.0)))
+						alignments.append([counter, geneAName, geneBName, exonId / (exonASize*1.0), id / (geneASize*1.0), 'NA', exonsAlignedA, exonsAlignedB])
+					else:
+						#alignment.write("%d\t%s\t%s\t%0.3f\t%0.3f\t%0.3f\t" % (counter, geneAName, geneBName, exonId / (exonASize*1.0), id / (geneASize*1.0), maxIntronId / (maxIntronNum*1.0)))
+						alignments.append([counter, geneAName, geneBName, exonId / (exonASize*1.0), id / (geneASize*1.0), maxIntronId / (maxIntronNum*1.0), exonsAlignedA, exonsAlignedB])
+					
+					#for i in exonsAlignedA:
+					#	alignment.write("%d," % i)
+					#alignment.write("\t")
+					#for i in exonsAlignedB:
+					#	alignment.write("%d," % i)
+					#alignment.write("\n")
 			
-				if (dirB == "-"): truncBStart = genomeB[chrB] - truncBStart
-				mafout.write("s %s %d %d %s %d %s\n" % (chrB, truncBStart, len(truncB.replace("-", "")), dirB, genomeB[chrB], truncB))
+					#write maf
+					mafout.write(a+"\n")
 				
-				mafout.write("\n")
+					if (dirA == "-"): truncAStart = genomeA[chrA] - truncAStart
+					mafout.write("s %s %d %d %s %d %s\n" % (chrA, truncAStart, len(truncA.replace("-", "")), dirA, genomeA[chrA], truncA))
+			
+					if (dirB == "-"): truncBStart = genomeB[chrB] - truncBStart
+					mafout.write("s %s %d %d %s %d %s\n" % (chrB, truncBStart, len(truncB.replace("-", "")), dirB, genomeB[chrB], truncB))
+					
+					mafout.write("\n")
 
 
 			exonId = 0
+			intronId = 0
+			maxIntronId = 0
+			maxIntronNum = 0
 			id = 0
+			score = 0
 			stringB = ""
 			stringA = ""
 			truncA = ""
 			truncB = ""
 			truncAStart = -1
 			truncBStart = -1
+			exonsAlignedA = []
+			exonsAlignedB = []
 
 		if stringB != "" and stringA !="":
 			for i in range(len(stringA)):
@@ -284,16 +422,57 @@ def main():
 					truncA += stringA[i]
 					truncB += stringB[i]
 
-				if stringB[i]==stringA[i] and baseARel >= 0 and baseARel < geneASize and stringB[i] != "-" and baseBRel >= 0 and baseBRel < geneBSize:
+				if stringB[i]==stringA[i] and baseARel >= 0 and baseARel < geneASize and stringB[i] != "-" and stringA[i]!="-" and baseBRel >= 0 and baseBRel < geneBSize:
 					id += 1
-					if inExon(baseARel, exonStartsA, exonSizesA, numExonsA, strandA, geneASize) and inExon(baseBRel, exonStartsB, exonSizesB, numExonsB, strandB, geneBSize):
+					exonA = inExon(baseARel, exonStartsA, exonSizesA, numExonsA, strandA, geneASize) 
+					exonB = inExon(baseBRel, exonStartsB, exonSizesB, numExonsB, strandB, geneBSize)
+					if exonA != -1 and exonB!= -1:
 						exonId += 1
+						if exonA not in exonsAlignedA: exonsAlignedA.append(exonA)
+						if exonB not in exonsAlignedB: exonsAlignedB.append(exonB)
+						if intronId > maxIntronId:
+							maxIntronId = intronId
+							maxIntronNum = intronNum
+						intronId = 0
+					elif exonA == -1 and exonB == -1 and stringB[i].isupper() and stringA[i].isupper():
+						intronId += 1
+						intronNum = inIntron(baseARel, exonStartsA, exonSizesA, numExonsA, strandA, geneASize)
+					else:
+						if intronId > maxIntronId:
+							maxIntronId = intronId
+							maxIntronNum = intronNum
+						intronId = 0
+
+				else:
+					if stringA[i] != "-" and stringB[i] !="-" and stringA[i].isupper() and stringB[i].isupper() and baseARel >= 0 and baseARel < geneASize and baseBRel >= 0 and baseBRel < geneBSize:
+						intronId +=1
+						intronNum = inIntron(baseARel, exonStartsA, exonSizesA, numExonsA, strandA, geneASize)
+					else:
+						if intronId > maxIntronId: 
+							maxIntronId = intronId
+							maxIntronNum = intronNum
+						intronId = 0
 
 				if stringB[i] !="-":
 					baseB += 1
 
 				if stringA[i] !="-": 
 					baseA += 1
+	category = categorizeLnc(alignments, numExonsA, numExonsB)
+	
+	alignment.write("alignmentID\tgeneA\tgeneB\texonID\tgeneID\tmaxContiguousIntron\texonsAlignedA\texonsAlignedB\tcategory\n")
+	for a in alignments:
+		alignment.write("%d\t%s\t%s\t%0.3f\t%0.3f\t%0.3f\t" % (a[0], a[1], a[2], a[3], a[4], a[5]))
+		a[6].sort()
+		a[7].sort()
+		for exon in a[6]:
+			alignment.write("%d," % exon)
+		alignment.write("\t")
+		for exon in a[7]:
+			alignment.write("%d," % exon)
+		alignment.write("\t")
+		alignment.write("%s\n" % category)
+
 
 if __name__ == "__main__":
 	main()

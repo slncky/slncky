@@ -18,6 +18,7 @@ LASTZ = 'lastz'
 BEDTOOLS = 'bedtools'
 FASTAFROMBED = 'fastaFromBed'
 INTERSECTBED = 'intersectBed'
+CLOSESTBED = 'closestBed'
 LIFTOVER = 'liftOver'
 
 def checkDependencies():
@@ -57,15 +58,19 @@ def checkDependencies():
 	if out[0].strip() != "liftOver":
 		sys.exit("ERROR: liftOver not installed! You must have liftOver in your path! Exiting...")
 
-def readAnnots(config, assembly):
+def readAnnots(config_path, assembly):
 	ANNOTS = {}
 
 	##READ IN CONFIG FILE##
 	try:
-		config = open(config, 'r')
+		config = open(config_path, 'r')
 	except IOError:
 		print "ERROR: cannot open ", config
-	
+
+	config_abspath = os.path.abspath(config_path)
+	index = config_path.rfind("/")
+	CONFIG_BASE = config_path[:index]
+
 	flag = False
 	for line in config.readlines():
 		line = line.strip()
@@ -83,6 +88,8 @@ def readAnnots(config, assembly):
 				if not os.path.isfile(file): 
 					ogFile = file
 					file = REALPATH+file
+				if not os.path.isfile(file):
+					file = CONFIG_BASE+ogFile
 				if not os.path.isfile(file):
 					print line[0]+" file "+ogFile+" does not exist! Please check your annotations.config file.  Exiting..."
 					sys.exit(1)
@@ -234,8 +241,9 @@ def alignTranscripts(lncPath, fa, orthPath, orthFa, tmpPath, FILTER, min, null):
 			if line[3] != "exonID" and float(line[3]) > min and float(line[3]) > exonID:
 				exonID = float(line[3])
 				seqID = float(line[4])
+				category = line[8]
 		if exonID > 0:		
-			FILTER.put([line[1], line[2], exonID, seqID])
+			FILTER.put([line[1], line[2], exonID, seqID, category])
 
 		os.remove(tmpPath+".alignment_identity.txt")
 		os.remove(tmpPath+".maf")
@@ -1017,11 +1025,7 @@ def writeWebsite(ANNOTS, out, ogLncs, SENSE_FILTER, ANTISENSE_FILTER, SENSE_MAPP
 
 	pre = out+"_html/"
 	
-	if not os.path.exists(pre):
-		cmd = ['mkdir', pre]
-		subprocess.check_call(cmd)
 	
-
 	index = open(pre+"index.html", 'w')
 	index.write("<html>\n<body>\n<h2>filterLncs</h2>\n")
 	index.write("<ul>\n")
@@ -1049,6 +1053,120 @@ def writeWebsite(ANNOTS, out, ogLncs, SENSE_FILTER, ANTISENSE_FILTER, SENSE_MAPP
 
 
 	#html.write("</body></html>")
+
+def categorizeLncsByAnnots(lncs, ORTHOLOGS, ANNOTS):
+	if "MIRNA" not in ANNOTS or "SNORNA" not in ANNOTS:
+		print "WARNING!: miRNA and snoRNA annotations not found for lnc categorization"
+	lncToCategory = {}
+	for entry in ORTHOLOGS:
+		category = ""
+		lnc = entry[0]
+		if lnc in lncToCategory:
+			category = lncToCategory[lnc]
+		else:
+			curLncFile = writeToTmp({lnc: lncs[lnc]})
+			#check if snorna host
+			if "SNORNA" in ANNOTS:
+				cmd =[INTERSECTBED, '-a', curLncFile, '-b', ANNOTS["SNORNA"][0]]
+				out = subprocess.check_output(cmd)
+				if out.strip() != "":
+					category = "sno_host"
+					lncToCategory[lnc] = "sno_host"
+			#check if mirna host
+			if category == "" and  "MIRNA" in ANNOTS:
+				cmd =[INTERSECTBED, '-a', curLncFile, '-b', ANNOTS["MIRNA"][0]]
+				out = subprocess.check_output(cmd)
+				if out != "":
+					category = "mir_host"
+					lncToCategory[lnc] = "mir_host"
+			#check if divergent
+			if category == "":
+				for file in ANNOTS["CODING"]:
+					if category != "": break
+					cmd = [CLOSESTBED, '-id', '-D', 'a', '-S', '-a', curLncFile, '-b', file]
+					out = subprocess.check_output(cmd)
+					out = out.split("\n")
+					for line in out:
+						if line.strip() == "": break
+						if category != "": break
+						line = line.split("\t")
+						if line[5] == "+":
+							lncTSS = int(line[1])
+						else:
+							lncTSS = int(line[2])
+						if line[17] == "+":
+							codingTSS = int(line[13])
+						else:
+							codingTSS = int(line[14])
+						if abs(lncTSS - codingTSS) <=500:
+							category = "divergent"
+							lncToCategory[lnc] = "divergent"
+			#if none of above and exonId > 10%: intergenic
+			if category == "":
+				maxExonId = float(entry[2])
+				for x in ORTHOLOGS:
+					if x[0] == lnc and float(x[2]) > maxExonId: maxExonId = float(x[2])
+				
+				if maxExonId >= 0.1: category = "intergenic"
+				else: category = "bad_alignment"
+				lncToCategory[lnc] = category
+
+			#cleanup
+			cmd = ['rm', curLncFile]
+			subprocess.call(cmd)
+		entry.append(category)
+
+def geneSymbol(ogLncs, ORTHOLOGS, ANNOTS, ORTH_ANNOTS):
+	lncToGeneSymbol = {}
+	GeneSymbol = {}
+	OrthGeneSymbol = {}
+
+	if "GENESYMBOL" in ANNOTS:
+	#load gene symbol file into dict
+		genesymbol = open(ANNOTS["GENESYMBOL"][0], 'r').readlines()
+		for line in genesymbol:
+			line = line.split()
+			GeneSymbol[line[0].strip()] = line[1].strip()
+
+	if "GENESYMBOL" in ORTH_ANNOTS:
+	#load gene symbol file into dict
+		genesymbol = open(ORTH_ANNOTS["GENESYMBOL"][0], 'r').readlines()
+		for line in genesymbol:
+			line = line.split()
+			OrthGeneSymbol[line[0].strip()] = line[1].strip()
+
+	for entry in ORTHOLOGS:
+		lncGeneSymbol = "Unannotated"
+		orthGeneSymbol = "Unannotated"	
+
+		lnc = entry[0]
+		if lnc in lncToGeneSymbol:
+			lncGeneSymbol = lncToGeneSymbol[lnc]
+		elif "GENESYMBOL" in ANNOTS:
+			curLncFile = writeToTmp({lnc: ogLncs[lnc]})
+			maxOverlap = 0
+			#for every noncoding file
+			for file in ANNOTS["NONCODING"]:
+				#intersect lnc with noncoding
+				cmd = [INTERSECTBED, '-split', '-s', '-wo', '-a', curLncFile, '-b', file]
+				out = subprocess.check_output(cmd)
+				#pick best intersecting and get gene symbol
+				out = out.split("\n")
+				for line in out:
+					if line.strip() == "": continue
+					line = line.split()
+					overlap = int(line[len(line)-1])
+					if overlap > maxOverlap and line[15].strip() in GeneSymbol:
+						lncGeneSymbol = GeneSymbol[line[15].strip()]
+						maxOverlap = overlap
+
+		ortholog = entry[1]
+		if ortholog in OrthGeneSymbol:
+			orthGeneSymbol = OrthGeneSymbol[ortholog]
+
+		entry.append(lncGeneSymbol)
+		entry.append(orthGeneSymbol)
+
 def main():
 	parser = argparse.ArgumentParser(description='Filter transcripts for bona fide lncRNAs and searches for orthologs')
 	parser.add_argument('bedfile', type=str, help='bed12 file of transcripts')
@@ -1085,6 +1203,7 @@ def main():
 		global BEDTOOLS
 		FASTAFROMBED = args.bedtools_path+"/fastaFromBed"
 		INTERSECTBED = args.bedtools_path+"/intersectBed"
+		CLOSESTBED = args.bedtools_path+"/closestBed"
 		BEDTOOLS = args.bedtools_path+"/bedtools"
 	if args.liftover_path is not None:
 		global LIFTOVER
@@ -1176,13 +1295,13 @@ def main():
 		if "ORTHOLOG" in ANNOTS and "LIFTOVER" in ANNOTS and "GENOME_FA" in ANNOTS and "GENOME_FA" in ORTH_ANNOTS and "CODING" in ORTH_ANNOTS:
 			CODING_BLAST_FILTER = blastToOrtholog(lncs, ANNOTS, ORTH_ANNOTS, "CODING", args.coding_blast_min, args.threads)
 			lncs, numRemoved = removeLncs(lncs, CODING_BLAST_FILTER)
-			print "\r        ... %d transcripts that blast >%d%% to ortholog coding transcript" % (numRemoved, int(args.coding_blast_min*100))
+			print "\r        ... %d transcripts that blast >%d%% to ortholog coding transcript                                                                   " % (numRemoved, int(args.coding_blast_min*100))
 
 		#SELF-BLAST TO FIND DUPLICATIONS
 		if "GENOME_FA" in ANNOTS:
 			lncs, SELF_BLAST_FILTER, numRemoved = selfBlast(lncs, ANNOTS, args.selfblast_coverage_min, args.selfblast_identity_min, args.threads)
 			#lncs, numRemoved = removeLncs(lncs, SELF_BLAST_FILTER) 
-			print "\r        ... %d transcripts that blast >%d%% to another transcript in input file" % (numRemoved, int(args.selfblast_identity_min*100))
+			print "\r        ... %d transcripts that blast >%d%% to another transcript in input file                                                             " % (numRemoved, int(args.selfblast_identity_min*100))
 		
 		#WRITE FILTERED DATA
 		
@@ -1194,7 +1313,13 @@ def main():
 		#WRITE FILTERED TXT
 		
 		if not args.no_website:
-			ucsc = open(args.out_prefix+".OVERLAP.bed", 'w')
+
+			pre = args.out_prefix+"_html/"
+			if not os.path.exists(pre):
+				cmd = ['mkdir', pre]
+				subprocess.check_call(cmd)
+	
+			ucsc = open(pre+pre+".overlap.bed", 'w')
 			ucscSet = set()
 			ucsc.write("track name=overlapping transcripts type=bed visibility=2\n")
 		
@@ -1239,20 +1364,43 @@ def main():
 		if not args.no_website: writeWebsite(ANNOTS, args.out_prefix, ogLncs, SENSE_FILTER, ANTISENSE_FILTER, SENSE_MAPPED_CODING_FILTER, ANTISENSE_MAPPED_CODING_FILTER, CODING_BLAST_FILTER, SELF_BLAST_FILTER, args.selfblast_identity_min, REPEAT_FILTER, REPEAT_CONTENT, args.repeat_min, lncs)
 
 	if not args.no_orth_search:
-		print "Searching for orthologs..."
-		#FIND NONCODING ORTHOLOGS!
 		if "NONCODING" in ORTH_ANNOTS and "LIFTOVER" in ANNOTS and "GENOME_FA" in ANNOTS and "GENOME_FA" in ORTH_ANNOTS:
+			print "Searching for orthologs..."
 			ORTHOLOGS = blastToOrtholog(lncs, ANNOTS, ORTH_ANNOTS, "NONCODING", args.noncoding_blast_min, args.threads)
 			tmpLncs, numRemoved = removeLncs(lncs, ORTHOLOGS)
-			print "\r        ... %d transcripts with noncoding ortholog!\n" % numRemoved
+			print "\r        ... %d transcripts with noncoding ortholog!                                                                                 \n" % numRemoved
+			
+			#categorize orthologs by annotation
+			categorizeLncsByAnnots(ogLncs, ORTHOLOGS, ANNOTS)
+			
+			#get gene symbol
+			if "GENESYMBOL" in ANNOTS or "GENESYMBOL" in ORTH_ANNOTS:
+				geneSymbol(ogLncs, ORTHOLOGS, ANNOTS, ORTH_ANNOTS)	
+		
+		
+			ORTHOLOGS.sort()
+			#FILTER TOP ORTHOLOGS
+			lncToOrtholog = {}
+			for entry in ORTHOLOGS:
+				if entry[0] not in lncToOrtholog: lncToOrtholog[entry[0]] = entry
+				else:
+					curExonId = lncToOrtholog[entry[0]][2]
+					if entry[2] > curExonId: lncToOrtholog[entry[0]] = entry
 
+			#WRITE ORTHOLOGS
+			orthologs = open(args.out_prefix+".orthologs.txt", 'w')
+			orthologs_top = open(args.out_prefix+".orthologs.top.txt", 'w')
 
-		#WRITE ORTHOLOGS
-		orthologs = open(args.out_prefix+".orthologs.txt", 'w')
-		orthologs.write("#lnc\tortholog\texonID\tseqID\n")
-		for entry in ORTHOLOGS:
-			orthologs.write("%s\t%s\t%.2f\t%.2f\n" % (entry[0], entry[1], entry[2], entry[3]))
-
-
+			orthologs.write("#lnc\tlncGeneSymbol\tortholog\torthologGeneSymbol\texonID\tseqID\tcategory(alignment)\tcategory(annotation)\n")
+			orthologs_top.write("#lnc\tlncGeneSymbol\tortholog\torthologGeneSymbol\texonID\tseqID\tcategory(alignment)\tcategory(annotation)\n")
+		
+			for entry in ORTHOLOGS:
+				orthologs.write("%s\t%s\t%s\t%s\t%.2f\t%.2f\t%s\t%s\n" % (entry[0], entry[6], entry[1], entry[7], entry[2], entry[3], entry[4], entry[5]))
+		
+			for lnc,entry in lncToOrtholog.iteritems():
+				orthologs_top.write("%s\t%s\t%s\t%s\t%.2f\t%.2f\t%s\t%s\n" % (entry[0], entry[6], entry[1], entry[7], entry[2], entry[3], entry[4], entry[5]))
+		
+		else:
+			print "Not enough information to search for orthologs! Please check you have genome fastas for both species, a liftOver file, and an ortholog noncoding file specificied in your annotations.config"
 if __name__ == "__main__":
 	main()
