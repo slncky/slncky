@@ -1172,7 +1172,7 @@ def main():
 	parser.add_argument('bedfile', type=str, help='bed12 file of transcripts')
 	parser.add_argument('assembly', type=str, help='assembly')
 	parser.add_argument('out_prefix', type=str, help='out_prefix')
-	parser.add_argument('--config', type=str, help='path to assembly.config file. default uses config file in same directory as slncky')
+	parser.add_argument('--config', '-c', type=str, help='path to assembly.config file. default uses config file in same directory as slncky')
 	parser.add_argument('--sense_min', type=float, help='min exonic overlap to filter out sense overlapping transcript, default = 0', default = 0)
 	parser.add_argument('--antisense_min', type=float, help='min exonic overlap to filter out antisense overlapping transcript, default = 0.3', default=0.3)
 	parser.add_argument('--coding_blast_min', type=float, help='min exonic identity to filter out transcript that blasts to orthologous coding gene. default = 0.1', default=0.1)
@@ -1186,7 +1186,7 @@ def main():
 	parser.add_argument('--lastz_path', type=str, help='path to lastz')
 	parser.add_argument('--no_filter', action='store_true', help='flag if you don\'t want lncs to be filtered before searching for ortholog')
 	parser.add_argument('--no_orth_search', action='store_true', help='flag if you only want to filter lncs but don\'t want to search for orthologs')
-	parser.add_argument('--no_website', action='store_true', help='flag if you don\'t want filter to create website')
+	parser.add_argument('--vis_filter', action='store_true', help='flag if you want website written visualizing transcripts that were filtered out')
 	args = parser.parse_args()
 	
 	global REALPATH
@@ -1312,14 +1312,14 @@ def main():
 
 		#WRITE FILTERED TXT
 		
-		if not args.no_website:
+		if args.vis_filter:
 
 			pre = args.out_prefix+"_html/"
 			if not os.path.exists(pre):
 				cmd = ['mkdir', pre]
 				subprocess.check_call(cmd)
 	
-			ucsc = open(pre+pre+".overlap.bed", 'w')
+			ucsc = open(pre+args.out_prefix+".overlap.bed", 'w')
 			ucscSet = set()
 			ucsc.write("track name=overlapping transcripts type=bed visibility=2\n")
 		
