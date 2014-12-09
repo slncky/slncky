@@ -494,84 +494,83 @@ def repeatFilter(lncs, annots, repeat_min):
 			FILTER.append([lnc, percent])
 		REPEAT.append([lnc, percent])
 	#newLncs, numRemoved = removeLncs(lncs, FILTER)
-	
 	return lncs, FILTER, 0, REPEAT
 
-
-IFRAME = '''
-	<script type="text/javascript">
-	<!--//
-	function goToLnc(mySelect) {
-	PageIndex2=mySelect.selectedIndex;
-	{
-	if (mySelect.options[PageIndex2].value != "none") {
-		//this is the key code in the JavaScript to open the new page in the iframe:-
-		frames['iframe'].location.href = mySelect.options[PageIndex2].value;
-	}
-	}
-	}
-
-	//-->
-	</script>
-'''
-
-def writeOverlappingTranscripts(out, ogLncs, SENSE_FILTER, ANTISENSE_FILTER, SENSE_MAPPED_CODING_FILTER, ANTISENSE_MAPPED_CODING_FILTER):
-	global IFRAME
-	
+def writeOverlappingTranscripts(TEMPLATE_PATH, out, sense_min, antisense_min, ogLncs, SENSE_FILTER, ANTISENSE_FILTER, SENSE_MAPPED_CODING_FILTER, ANTISENSE_MAPPED_CODING_FILTER):
 	pre = out+"_html/"
-
+	template_overlapCoding = open(TEMPLATE_PATH+"overlapCoding.html", 'r')
 	html = open(pre+"overlapCoding.html", 'w')
-	html.write("<html><head>%s</head><body>\n" % IFRAME)
 	
+	for line in template_overlapCoding.readlines():
+		if line.startswith("PARAMETERS"):
+			line = line.replace("ANTISENSE_MIN", str(antisense_min))
+			line = line.replace("SENSE_MIN", str(sense_min))
+			line = line.replace("PARAMETERS", "")
 
-	html.write("<h2>Overlapping Transcripts</h2>\n")
-	html.write("<p>Step 1: Load %s.OVERLAP.bed to the UCSC session below by clicking My Data -> Custom Tracks.\n" % out)
-	html.write("<p>Step 2: Select transcript from drop-down menu to view: \n")
-	html.write("<form name=\"overlapping\">\n")
-	html.write("<select name=\"selectLnc\" onChange=\"goToLnc(this.form.selectLnc)\">\n")
+			html.write(line)
+		elif line.startswith("FILTERED"):
+			lncs = set()
+			for x in SENSE_FILTER: lncs.add(x[0])
+			for x in ANTISENSE_FILTER: lncs.add(x[0])
+			for x in SENSE_MAPPED_CODING_FILTER: lncs.add(x[0])
+			for x in ANTISENSE_MAPPED_CODING_FILTER: lncs.add(x[0])
+			
+			line = line.replace("NUM_FILTERED", str(len(lncs)))
+			line = line.replace("FILTERED", "")
+			html.write(line)
 
-	html.write("<option value=\"None\" style=\"font-weight: bold;\">>>OVERLAPS CODING</option>\n")
-	for x in SENSE_FILTER:
-		lncEntry = ogLncs[x[0]].split("\t")
-		chr = lncEntry[0]
-		start = lncEntry[1]
-		end = lncEntry[2]
-		html.write("<option value=\"http://genome.ucsc.edu/cgi-bin/hgTracks?db=mm9&position=%s:%s-%s\">%s - %.1f%% sense</option>\n" % (chr, start, end, x[0], x[2]*100.0))
-	for x in ANTISENSE_FILTER:
-		lncEntry = ogLncs[x[0]].split("\t")
-		chr = lncEntry[0]
-		start = lncEntry[1]
-		end = lncEntry[2]
-		html.write("<option value=\"http://genome.ucsc.edu/cgi-bin/hgTracks?db=mm9&position=%s:%s-%s\">%s - %.1f%% antisense</option>\n" % (chr, start, end, x[0], x[2]*100.0))
-	
-	html.write("<option value=\"None\" style=\"font-weight: bold;\">>>OVERLAPS MAPPED CODING</option>")
-	for x in SENSE_MAPPED_CODING_FILTER:
-		lncEntry = ogLncs[x[0]].split("\t")
-		chr = lncEntry[0]
-		start = lncEntry[1]
-		end = lncEntry[2]
-		html.write("<option value=\"http://genome.ucsc.edu/cgi-bin/hgTracks?db=mm9&position=%s:%s-%s\">%s - %.1f%% sense</option>\n" % (chr, start, end, x[0], x[2]*100.0))
-	for x in ANTISENSE_MAPPED_CODING_FILTER:
-		lncEntry = ogLncs[x[0]].split("\t")
-		chr = lncEntry[0]
-		start = lncEntry[1]
-		end = lncEntry[2]
-		html.write("<option value=\"http://genome.ucsc.edu/cgi-bin/hgTracks?db=mm9&position=%s:%s-%s\">%s - %.1f%% antisense</option>\n" % (chr, start, end, x[0], x[2]*100.0))
-	
-	html.write("</select>\n</form>\n")
-	
-	html.write("<iframe name=\"iframe\" src=\"http://genome.ucsc.edu/cgi-bin/hgTracks?hgS_doOtherUser=submit&hgS_otherUserName=jjennychen&hgS_otherUserSessionName=filterLncs.mm9\" width=100% height=\"1000\"></iframe>\n")
-	html.write("</body></html>")
+		elif line.startswith("CUSTOM"):
+			line = line.replace("CUSTOM_PATH", pre+out+".overlap.bed")
+			line = line.replace("CUSTOM", "")
+			html.write(line)
+		elif line.startswith("OPTIONS"):
+			html.write("<option value=\"none\" style=\"font-weight: bold;\">OVERLAPS CODING</option>")
+			for x in SENSE_FILTER:
+				lncEntry = ogLncs[x[0]].split("\t")
+				chr = lncEntry[0]
+				start = lncEntry[1]
+				end = lncEntry[2]
+				html.write("<option value=\"http://genome.ucsc.edu/cgi-bin/hgTracks?db=mm9&position=%s:%s-%s\">%s - %.1f%% sense</option>\n" % (chr, start, end, x[0], x[2]*100.0))
+			for x in ANTISENSE_FILTER:
+				lncEntry = ogLncs[x[0]].split("\t")
+				chr = lncEntry[0]
+				start = lncEntry[1]
+				end = lncEntry[2]
+				html.write("<option value=\"http://genome.ucsc.edu/cgi-bin/hgTracks?db=mm9&position=%s:%s-%s\">%s - %.1f%% antisense</option>\n" % (chr, start, end, x[0], x[2]*100.0))
+			
+			html.write("<option value=\"none\" style=\"font-weight: bold;\">OVERLAPS MAPPED CODING</option>")
+			for x in SENSE_MAPPED_CODING_FILTER:
+				lncEntry = ogLncs[x[0]].split("\t")
+				chr = lncEntry[0]
+				start = lncEntry[1]
+				end = lncEntry[2]
+				html.write("<option value=\"http://genome.ucsc.edu/cgi-bin/hgTracks?db=mm9&position=%s:%s-%s\">%s - %.1f%% sense</option>\n" % (chr, start, end, x[0], x[2]*100.0))
+			for x in ANTISENSE_MAPPED_CODING_FILTER:
+				lncEntry = ogLncs[x[0]].split("\t")
+				chr = lncEntry[0]
+				start = lncEntry[1]
+				end = lncEntry[2]
+				html.write("<option value=\"http://genome.ucsc.edu/cgi-bin/hgTracks?db=mm9&position=%s:%s-%s\">%s - %.1f%% antisense</option>\n" % (chr, start, end, x[0], x[2]*100.0))
+		else:
+			html.write(line)
 
-def writeCodingBlast(out, CODING_BLAST_FILTER):
+def writeCodingBlast(TEMPLATE_PATH, out, coding_blast_min, CODING_BLAST_FILTER):
 	pre = out+"_html/"
 
+	template_codingBlast = open(TEMPLATE_PATH+"blastCoding.html", 'r')
 	html = open(pre+"blastCoding.html", 'w')
+	
+	for line in template_codingBlast.readlines():
+		if line.startswith("PARAMETERS"):
+			line = line.replace("PARAMETERS", "")
+			line = line.replace("CODING_BLAST_MIN", str(coding_blast_min))
+		elif line.startswith("FILTERED"):
+			lncs = set()
+			for x in CODING_BLAST_FILTER: lncs.add(x[0])
+			line = line.replace("NUM_GENES", str(len(lncs)))
+			line = line.replace("FILTERED", "")
 
-	html.write("<html><head></head><body\n")
-	html.write("<h2>Transcripts Blasting to Orthologous Coding Gene</h2>\n")
-	html.write("This is a place holder for the visualization tool which will show the alignments.\n")
-	html.write("</body></html>\n")
+		html.write(line)
 
 def makeClusters(SELF_BLAST_FILTER):
 	#create clusters
@@ -642,199 +641,32 @@ def writeJson(out, sets, pairsToId):
 		json.write(", {\"source\": %d, \"target\": %d, \"value\": 100}" % (num, num))
 	json.write("]}")
 
-HEATMAP_HEAD = '''
-<style>
-@import url(http://bost.ocks.org/mike/style.css?aea6f0a);
-
-.background {
-  fill: #eee;
-}
-
-line {
-  stroke: #fff;
-}
-
-text.active {
-  fill: red;
-}
-
-</style>
-
-'''
-HEATMAP_SCRIPT = '''
-
-	<script src="http://d3js.org/d3.v2.min.js?2.8.1" charset="utf-8" type="text/javascript"></script>
-	<script type="text/javascript">
-
-	var margin = {top: 80, right: 0, bottom: 10, left: 80},
-		width = 720,
-		height = 720;
-
-	var x = d3.scale.ordinal().rangeBands([0, width]),
-		z = d3.scale.linear().domain([40, 100]).clamp(true),
-		c = d3.scale.category10().domain(d3.range(10));
-
-	var svg = d3.select("body").append("svg")
-		.attr("width", width + margin.left + margin.right)
-		.attr("height", height + margin.top + margin.bottom)
-		.style("margin-left", margin.left + "px")
-	  .append("g")
-		.attr("transform", "translate(" + margin.left + "," + margin.top + ")");
-
-	d3.json("REPLACEME", function(miserables) {
-	  var matrix = [],
-		  nodes = miserables.nodes,
-		  n = nodes.length;
-
-	  // Compute index per node.
-	  nodes.forEach(function(node, i) {
-		node.index = i;
-		node.count = 0;
-		matrix[i] = d3.range(n).map(function(j) { return {x: j, y: i, z: 0}; });
-	  });
-
-	  // Convert links to matrix; count character occurrences.
-	  miserables.links.forEach(function(link) {
-		matrix[link.source][link.target].z = link.value;
-		matrix[link.target][link.source].z = link.value;
-		//matrix[link.source][link.source].z += link.value;
-		//matrix[link.target][link.target].z += link.value;
-		nodes[link.source].count = link.value;
-		nodes[link.target].count = link.value;
-	  });
-
-	  // Precompute the orders.
-	  var orders = {
-		name: d3.range(n).sort(function(a, b) { return d3.ascending(nodes[a].name, nodes[b].name); }),
-		count: d3.range(n).sort(function(a, b) { return nodes[b].count - nodes[a].count; }),
-		group: d3.range(n).sort(function(a, b) { return nodes[b].group - nodes[a].group; })
-	  };
-
-	  // The default sort order.
-	  x.domain(orders.group);
-
-	  svg.append("rect")
-		  .attr("class", "background")
-		  .attr("width", width)
-		  .attr("height", height);
-
-	  var row = svg.selectAll(".row")
-		  .data(matrix)
-		.enter().append("g")
-		  .attr("class", "row")
-		  .attr("transform", function(d, i) { return "translate(0," + x(i) + ")"; })
-		  .each(row);
-
-	  row.append("line")
-		  .attr("x2", width);
-
-	  row.append("text")
-		  .attr("x", -6)
-		  .attr("y", x.rangeBand() / 2)
-		  .attr("dy", ".32em")
-		  .attr("text-anchor", "end")
-		  .text(function(d, i) { return nodes[i].name; });
-
-	  var column = svg.selectAll(".column")
-		  .data(matrix)
-		.enter().append("g")
-		  .attr("class", "column")
-		  .attr("transform", function(d, i) { return "translate(" + x(i) + ")rotate(-90)"; });
-
-	  column.append("line")
-		  .attr("x1", -width);
-
-	  column.append("text")
-		  .attr("x", 6)
-		  .attr("y", x.rangeBand() / 2)
-		  .attr("dy", ".32em")
-		  .attr("text-anchor", "start")
-		  .text(function(d, i) { return nodes[i].name; });
-
-	  function row(row) {
-		var cell = d3.select(this).selectAll(".cell")
-			.data(row.filter(function(d) { return d.z; }))
-		  .enter().append("rect")
-			.attr("class", "cell")
-			.attr("x", function(d) { return x(d.x); })
-			.attr("width", x.rangeBand())
-			.attr("height", x.rangeBand())
-			.style("fill-opacity", function(d) { return z(d.z); })
-			.style("fill", "#D62728")
-			.on("mouseover", mouseover)
-			.on("mouseout", mouseout);
-		
-		var cell = d3.select(this).selectAll(".row")
-			.data(row.filter(function(d) { return d.z;}))
-			.enter().append("text")
-			.attr("class", "cell")
-		   .attr("x", function(d) { return x(d.x) + (x.rangeBand()/2); })
-			.attr("y", function(d) { return x.rangeBand() / 2; })
-			.text(function(d) {return d.z+"%";});
-	   
-	  }
-
-
-	  function mouseover(p) {
-		d3.selectAll(".row text").classed("active", function(d, i) { return i == p.y; });
-		d3.selectAll(".column text").classed("active", function(d, i) { return i == p.x; });
-	  }
-
-	  function mouseout() {
-		d3.selectAll("text").classed("active", false);
-	  }
-
-	  //d3.select("#order").on("change", function() {
-	  //  clearTimeout(timeout);
-	  //  order(this.value);
-	  //});
-
-	  function order(value) {
-		x.domain(orders[value]);
-
-		var t = svg.transition().duration(2500);
-
-		t.selectAll(".row")
-			.delay(function(d, i) { return x(i) * 4; })
-			.attr("transform", function(d, i) { return "translate(0," + x(i) + ")"; })
-		  .selectAll(".cell")
-			.delay(function(d) { return x(d.x) * 4; })
-			.attr("x", function(d) { return x(d.x); });
-
-		t.selectAll(".column")
-			.delay(function(d, i) { return x(i) * 4; })
-			.attr("transform", function(d, i) { return "translate(" + x(i) + ")rotate(-90)"; });
-	  }
-
-	  //var timeout = setTimeout(function() {
-	  //  order("group");
-	  //  d3.select("#order").property("selectedIndex", 2).node().focus();
-	  //}, 5000);
-	});
-
-	</script>
-	'''
-def writeDuplications(out, SELF_BLAST_FILTER, id_min):
-	global HEATMAP_HEAD
-	global HEATMAP_SCRIPT
+def writeDuplications(TEMPLATE_PATH, out, SELF_BLAST_FILTER, id_min):
 	
 	pre = out+"_html/"
-
+	template_codingBlast = open(TEMPLATE_PATH+"selfBlast.html", 'r')
 	html = open(pre+"selfBlast.html", 'w')
-	html.write("<html><head>%s</head><body>\n" % HEATMAP_HEAD)
 	
 	#genea, geneb, coverage, id, continuity
 	sets, pairsToId = makeClusters(SELF_BLAST_FILTER)
-
 	writeJson(out, sets, pairsToId)
+	
+	for line in template_codingBlast.readlines():
+		if line.startswith("PARAMETERS"):
+			line = line.replace("PARAMETERS", "")
+			line = line.replace("SELFBLAST_ID_MIN", str(id_min))
+		elif line.startswith("FILTERED"):
+			lncs = set()
+			for x in SELF_BLAST_FILTER: lncs.add(x[0])
+			line = line.replace("NUM_FILTERED", str(len(lncs)))
+			line = line.replace("FILTERED", "")
+			line = line.replace("ID", str(id_min*100))
+		elif line.startswith("JSON"):
+			line = line.replace("JSON_FILE", out+".duplications.json")
+			line = line.replace("JSON", "")
 
-	HEATMAP_SCRIPT = HEATMAP_SCRIPT.replace("REPLACEME", out+".duplications.json")
+		html.write(line)	
 
-	#write website
-	html.write("<h2>Duplications</h2>\n")
-	html.write("The following transcripts aligned to another transcript with >%d%% identity.\n" % int(id_min*100))
-	html.write("\n%s\n" % HEATMAP_SCRIPT)
-	html.write("</body></html>")
 
 def writeHist(out, REPEAT_CONTENT, cleanLncs):
 	pre = out+"_html/"
@@ -866,193 +698,74 @@ def writeHist(out, REPEAT_CONTENT, cleanLncs):
 		repeat.write("%d-%d%%\t%.2f\t%.2f\n" %(i*5, (i*5)+5, (before_hist[i]*1.0) / total, after_hist[i]*1.0 / after_total))
 
 
-REPEAT_HEAD = '''
-<style>
-
-.bar {
-	  fill: steelblue;
-}
-
-.bar:hover {
-	  fill: brown;
-}
-
-.axis {
-	  font: 10px sans-serif;
-}
-
-.axis path,
-.axis line {
-	  fill: none;
-	    stroke: #000;
-		  shape-rendering: crispEdges;
-}
-
-.x.axis path {
-	  display: none;
-}
-
-</style>
-'''
-
-REPEAT_SCRIPT = '''
-<form>
-<label><input type="radio" name="dataset" value="before" checked> Before Filtering</label>
-<label><input type="radio" name="dataset" value="after"> After Filtering</label>
-</form>
-
-<script src="http://d3js.org/d3.v3.min.js"></script>
-
-<script>
-
-var margin = {top: 20, right: 20, bottom: 30, left: 40},
-    width = 960 - margin.left - margin.right,
-    height = 500 - margin.top - margin.bottom;
-
-var x = d3.scale.ordinal()
-    .rangeRoundBands([0, width], .1);
-
-var y = d3.scale.linear()
-    .range([height, 0]);
-
-var xAxis = d3.svg.axis()
-    .scale(x)
-    .orient("bottom");
-
-var yAxis = d3.svg.axis()
-    .scale(y)
-    .orient("left")
-    .ticks(10, "%");
-
-var svg = d3.select("body").append("svg")
-    .attr("width", width + margin.left + margin.right)
-    .attr("height", height + margin.top + margin.bottom)
-  .append("g")
-      .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
-
-  d3.tsv("REPLACEME", type, function(error, data) {
-    x.domain(data.map(function(d) { return d.letter; }));
-  y.domain([0, d3.max(data, function(d) { return d.frequency_b; })]);
-
-    svg.append("g")
-      .attr("class", "x axis")
-        .attr("transform", "translate(0," + height + ")")
-      .call(xAxis);
-
-    svg.append("g")
-      .attr("class", "y axis")
-        .call(yAxis)
-    .append("text")
-      .attr("transform", "rotate(-90)")
-        .attr("y", 6)
-      .attr("dy", ".71em")
-        .style("text-anchor", "end")
-      .text("Frequency");
-
-    svg.selectAll(".bar")
-      .data(data)
-      .enter().append("rect")
-        .attr("class", "bar")
-      .attr("x", function(d) { return x(d.letter); })
-        .attr("width", x.rangeBand())
-      .attr("y", function(d) { return y(d.frequency_b); })
-        .attr("height", function(d) { return height - y(d.frequency_b); });
-
-	d3.selectAll("input").on("change", change);
-
-	function change(){
-		var transition = svg.transition().duration(750),
-        	delay = function(d, i) { return i * 50; };
-
-		var value = this.value;
-
-		if (value == "before") {
-			transition.selectAll(".bar")
-				.delay(delay)
-				.attr("y", function(d) { return y(d.frequency_b); })
-				.attr("height", function(d) { return height - y(d.frequency_b); });
-            y.domain([0, d3.max(data, function(d) { return d.frequency_b; })]);
-			svg.selectAll("g.y.axis")
-				.call(yAxis);
-		} else {
-			transition.selectAll(".bar")
-				.delay(delay)
-				.attr("y", function(d) { return y(d.frequency_a); })
-				.attr("height", function(d) { return height - y(d.frequency_a); });
-		    y.domain([0, d3.max(data, function(d) { return d.frequency_a; })]);
-			svg.selectAll("g.y.axis")
-				.call(yAxis);
-		}
-	}
-  });
-
-  function type(d) {
-    d.frequency_b = +d.frequency_b;
-	d.frequency_a = +d.frequency_a;
-  return d;
-  }
-
-  </script>
-
-'''
-
-def writeRepeat(out, REPEAT_FILTER, REPEAT_CONTENT, repeat_min, cleanLncs):
-	global REPEAT_HEAD
-	global REPEAT_SCRIPT
-
-	pre = out+"_html/"
+def writeRepeat(TEMPLATE_PATH, out, REPEAT_FILTER, REPEAT_CONTENT, repeat_min, cleanLncs):
 	
-	REPEAT_SCRIPT = REPEAT_SCRIPT.replace("REPLACEME", out+".repeat_histogram.txt")
-
+	pre = out+"_html/"
+	template_repeatContent = open(TEMPLATE_PATH+"repeatContent.html", 'r')
+	html = open(pre+"repeatContent.html", 'w')
+	
 	writeHist(out, REPEAT_CONTENT, cleanLncs)
 	
-	html = open(pre+"repeatContent.html", 'w')
-	html.write("<html><head>%s</head><body>\n" % REPEAT_HEAD)
-	html.write("<h2>Repeat Content</h2>\n")
-	html.write("\n%s\n" % REPEAT_SCRIPT)
-	
-	html.write("<p>The following transcripts had above %d%% repeat content and were filtered out:" % int(repeat_min*100))
-	html.write("<ul>\n")
-	for x in REPEAT_FILTER:
-		html.write("<li>%s - %.1f%%</li>\n" % (x[0], x[1]*100))
-	html.write("</ul>\n")
+	for line in template_repeatContent.readlines():
+		if line.startswith("PARAMETERS"):
+			line = line.replace("REPEAT_MIN", str(repeat_min))
+			line = line.replace("PARAMETERS", "")
+			html.write(line)
+		elif line.startswith("FILTERED"):
+			line = line.replace("REPEAT_MIN", str(repeat_min*100))
+			line = line.replace("NUM_FILTERED", str(len(REPEAT_FILTER)))
+			line = line.replace("FILTERED", "")
+			html.write(line)
+			html.write("<ul>\n")
+			for x in REPEAT_FILTER:
+				html.write("<li>%s - %.1f%%</li>\n" % (x[0], x[1]*100))
+			html.write("</ul>\n")
+		elif line.startswith("TXT"):
+			line = line.replace("TXT_FILE", out+".repeat_histogram.txt")
+			line = line.replace("TXT", "")
+			html.write(line)
+		else:
+			html.write(line)
 
-	html.write("</body></html>")
-
-
-
-def writeWebsite(ANNOTS, out, ogLncs, SENSE_FILTER, ANTISENSE_FILTER, SENSE_MAPPED_CODING_FILTER, ANTISENSE_MAPPED_CODING_FILTER, CODING_BLAST_FILTER, SELF_BLAST_FILTER, id_min, REPEAT_FILTER, REPEAT_CONTENT, repeat_min, cleanLncs):
+def writeWebsite(ANNOTS, out, ogLncs, sense_min, antisense_min, coding_blast_min, SENSE_FILTER, ANTISENSE_FILTER, SENSE_MAPPED_CODING_FILTER, ANTISENSE_MAPPED_CODING_FILTER, CODING_BLAST_FILTER, SELF_BLAST_FILTER, id_min, REPEAT_FILTER, REPEAT_CONTENT, repeat_min, cleanLncs):
 
 	pre = out+"_html/"
+	TEMPLATE_PATH = REALPATH+"/html_templates/"
+	template_css = TEMPLATE_PATH+"/stylesheet.css"
 	
+	#cp template sheet over
+	cmd = ['cp', template_css, pre]
+	subprocess.check_call(cmd)
 	
+	#write index
+	template_index = open(TEMPLATE_PATH+"index.html", 'r')
 	index = open(pre+"index.html", 'w')
-	index.write("<html>\n<body>\n<h2>filterLncs</h2>\n")
-	index.write("<ul>\n")
-	if "CODING" in ANNOTS or "MAPPED_CODING" in ANNOTS: 
-		index.write("<li><a href=\"overlapCoding.html\">Overlapping Coding Transcripts</a></li>\n")
-		writeOverlappingTranscripts(out, ogLncs, SENSE_FILTER, ANTISENSE_FILTER, SENSE_MAPPED_CODING_FILTER, ANTISENSE_MAPPED_CODING_FILTER)
-	
-	if len(CODING_BLAST_FILTER) > 0:
-		writeCodingBlast(out, CODING_BLAST_FILTER)
-		index.write("<li><a href=\"blastCoding.html\">Transcripts Blasting to Orthologous Coding</a></li>\n")
-	
-	if "GENOME_FA" in ANNOTS:
-		index.write("<li><a href=\"selfBlast.html\">Duplications</a></li>\n")
-		writeDuplications(out, SELF_BLAST_FILTER, id_min)
-	
-	
-	if "REPEAT_MASKER" in ANNOTS: 
-		index.write("<li><a href=\"repeatContent.html\">Repeat Content</a></li>\n")
-		writeRepeat(out, REPEAT_FILTER, REPEAT_CONTENT, repeat_min, cleanLncs)
-	index.write("</ul>\n")
-	index.write("</body></html>\n")
-	index.close()
+
+	for line in template_index.readlines():
+		if line.startswith("FILTER1"):
+			if "CODING" in ANNOTS or "MAPPED_CODING" in ANNOTS:
+				line = line.replace("FILTER1", "")
+				index.write(line)
+				writeOverlappingTranscripts(TEMPLATE_PATH, out, sense_min, antisense_min, ogLncs, SENSE_FILTER, ANTISENSE_FILTER, SENSE_MAPPED_CODING_FILTER, ANTISENSE_MAPPED_CODING_FILTER)
+		elif line.startswith("FILTER2"):
+			if len(CODING_BLAST_FILTER)>0:
+				line = line.replace("FILTER2", "")
+				index.write(line)
+				writeCodingBlast(TEMPLATE_PATH, out, coding_blast_min, CODING_BLAST_FILTER)
+		elif line.startswith("FILTER3"):
+			if "GENOME_FA" in ANNOTS:
+				line = line.replace("FILTER3", "")
+				index.write(line)
+				writeDuplications(TEMPLATE_PATH, out, SELF_BLAST_FILTER, id_min)
+		elif line.startswith("FILTER4"):
+			if "REPEAT_MASKER" in ANNOTS:
+				line = line.replace("FILTER4", "")
+				index.write(line)
+				writeRepeat(TEMPLATE_PATH, out, REPEAT_FILTER, REPEAT_CONTENT, repeat_min, cleanLncs)
+		else: 
+			index.write(line)
 
 
-
-
-	#html.write("</body></html>")
 
 def categorizeLncsByAnnots(lncs, ORTHOLOGS, ANNOTS):
 	if "MIRNA" not in ANNOTS or "SNORNA" not in ANNOTS:
@@ -1108,7 +821,7 @@ def categorizeLncsByAnnots(lncs, ORTHOLOGS, ANNOTS):
 					if x[0] == lnc and float(x[2]) > maxExonId: maxExonId = float(x[2])
 				
 				if maxExonId >= 0.1: category = "intergenic"
-				else: category = "bad_alignment"
+				else: category = "intergenic (bad_alignment)"
 				lncToCategory[lnc] = category
 
 			#cleanup
@@ -1186,7 +899,8 @@ def main():
 	parser.add_argument('--lastz_path', type=str, help='path to lastz')
 	parser.add_argument('--no_filter', action='store_true', help='flag if you don\'t want lncs to be filtered before searching for ortholog')
 	parser.add_argument('--no_orth_search', action='store_true', help='flag if you only want to filter lncs but don\'t want to search for orthologs')
-	parser.add_argument('--vis_filter', action='store_true', help='flag if you want website written visualizing transcripts that were filtered out')
+	parser.add_argument('--no_web', action='store_true', help='flag if you don\'t want website written visualizing transcripts that were filtered out')
+
 	args = parser.parse_args()
 	
 	global REALPATH
@@ -1312,7 +1026,7 @@ def main():
 
 		#WRITE FILTERED TXT
 		
-		if args.vis_filter:
+		if not args.no_web:
 
 			pre = args.out_prefix+"_html/"
 			if not os.path.exists(pre):
@@ -1329,27 +1043,27 @@ def main():
 
 		for x in SENSE_FILTER:
 			filtered.write("%s\t%.1f%% exonic overlap with coding transcript %s in same orientation\n" % (x[0], x[2]*100.0, x[1]))
-			if not args.no_website and x[0] not in ucscSet:
+			if not args.no_web and x[0] not in ucscSet:
 				ucsc.write(ogLncs[x[0]])
 				ucscSet.add(x[0])
 		for x in ANTISENSE_FILTER:
 			filtered.write("%s\t%.1f%% exonic overlap with coding transcript %s in opposite orientation\n" % (x[0], x[2]*100.0, x[1]))
-			if not args.no_website and  x[0] not in ucscSet:
+			if not args.no_web and  x[0] not in ucscSet:
 				ucsc.write(ogLncs[x[0]])
 				ucscSet.add(x[0])
 		for x in WITHIN_FILTER:
 			filtered.write("%s\ttranscript entirely within coding transcript %s\n" % (x[0], x[1]))
-			if not args.no_website and  x[0] not in ucscSet:
+			if not args.no_web and  x[0] not in ucscSet:
 				ucsc.write(ogLncs[x[0]])
 				ucscSet.add(x[0])
 		for x in SENSE_MAPPED_CODING_FILTER:
 			filtered.write("%s\t%.1f%% exonic overlap with mapped coding transcript %s in same orientation\n" % (x[0], x[2]*100.0, x[1]))
-			if not args.no_website and x[0] not in ucscSet:
+			if not args.no_web and x[0] not in ucscSet:
 				ucsc.write(ogLncs[x[0]])
 				ucscSet.add(x[0])
 		for x in ANTISENSE_MAPPED_CODING_FILTER:
 			filtered.write("%s\t%.1f%% exonic overlap with mapped coding transcript %s in opposite orientation\n" % (x[0], x[2]*100.0, x[1]))
-			if not args.no_website and x[0] not in ucscSet:
+			if not args.no_web and x[0] not in ucscSet:
 				ucsc.write(ogLncs[x[0]])
 				ucscSet.add(x[0])
 		for x in CODING_BLAST_FILTER:
@@ -1361,7 +1075,7 @@ def main():
 
 		#WRITE WEBSITE
 
-		if not args.no_website: writeWebsite(ANNOTS, args.out_prefix, ogLncs, SENSE_FILTER, ANTISENSE_FILTER, SENSE_MAPPED_CODING_FILTER, ANTISENSE_MAPPED_CODING_FILTER, CODING_BLAST_FILTER, SELF_BLAST_FILTER, args.selfblast_identity_min, REPEAT_FILTER, REPEAT_CONTENT, args.repeat_min, lncs)
+		if not args.no_web: writeWebsite(ANNOTS, args.out_prefix, ogLncs, args.sense_min, args.antisense_min, args.coding_blast_min, SENSE_FILTER, ANTISENSE_FILTER, SENSE_MAPPED_CODING_FILTER, ANTISENSE_MAPPED_CODING_FILTER, CODING_BLAST_FILTER, SELF_BLAST_FILTER, args.selfblast_identity_min, REPEAT_FILTER, REPEAT_CONTENT, args.repeat_min, lncs)
 
 	if not args.no_orth_search:
 		if "NONCODING" in ORTH_ANNOTS and "LIFTOVER" in ANNOTS and "GENOME_FA" in ANNOTS and "GENOME_FA" in ORTH_ANNOTS:
