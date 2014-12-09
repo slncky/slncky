@@ -124,6 +124,7 @@ def categorizeLnc(alignments, numExonsA, numExonsB):
 	if (len(exonsAlignedA) == 1 or len(exonsAlignedB) == 1) and (numExonsA!=1 and numExonsB!=1): 
 		if maxExonId >=0.1: return "divergent"
 		else: return "divergent/bad_alignment"
+	
 	if maxExonId < 0.1: return "mir_host/bad_alignment"
 	if maxExonId >= 0.2:
 		if maxIntronId >= 0.1: return "sno_host"
