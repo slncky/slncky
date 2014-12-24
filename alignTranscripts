@@ -105,7 +105,6 @@ def alignFa(paddedAFaPath, paddedBFaPath, unmask, gap_open, gap_extend):
 	null.close()
 	cmd = ['rm', nullPath]
 	subprocess.check_call(cmd)
-
 	return tmpPath
 
 def categorizeLnc(alignments, numExonsA, numExonsB):
@@ -152,7 +151,6 @@ def main():
 	parser.add_argument('--bedtools_path', type=str)
 	parser.add_argument('--lastz_path', type=str)
 	parser.add_argument('--shuffle_bg', action='store_true', help='Aligns genes to random background and removes nonsignificant alignments')
-
 	args = parser.parse_args()
 
 	if args.bedtools_path is not None:
@@ -272,7 +270,9 @@ def main():
 		subprocess.check_call(cmd)
 
 		maxShuffleScore = max(shuffleScores)
+	
 	#ALIGN GENES OF INTEREST
+	
 	mafPath = alignFa(paddedAFaPath, paddedBFaPath, args.unmask, args.gap_open, args.gap_extend)
 
 	mafFile = open(mafPath, 'r')
@@ -281,7 +281,7 @@ def main():
 
 	cmd = ['rm', paddedABedPath, paddedBBedPath, paddedAFaPath, paddedBFaPath, mafPath]
 	subprocess.check_call(cmd)	
-	
+
 	chrA = geneA[0].strip()
 	geneAStart = int(geneA[1])+args.pad
 	geneAEnd = int(geneA[2])-args.pad
@@ -473,7 +473,6 @@ def main():
 			alignment.write("%d," % exon)
 		alignment.write("\t")
 		alignment.write("%s\n" % category)
-
 
 if __name__ == "__main__":
 	main()
