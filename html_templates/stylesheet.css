@@ -48,7 +48,7 @@ table {
 
 /* LAYOUT STYLES */
 body {
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.5; 
   background: #fafafa url(body-bg.jpg) 0 0 repeat;
   font-family: 'Helvetica Neue', Helvetica, Arial, serif;
@@ -78,6 +78,7 @@ header h1 {
   line-height: 1;
   margin-bottom: 0.2em;
   width: 540px;
+  margin-left: -0.9em;
 }
 
 header h2 {
@@ -91,7 +92,7 @@ header h2 {
 
 .inner {
   position: relative;
-  width: 1100px;
+  width: 940px;
   margin: 0 auto;
 }
 
@@ -101,7 +102,7 @@ header h2 {
 }
 
 #main-content {
-  width: 900px;
+  width: 740px;
   float: left;
 }
 
