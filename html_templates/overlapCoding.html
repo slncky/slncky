@@ -1,0 +1,49 @@
+<html>
+
+<head>
+
+	<link href='https://fonts.googleapis.com/css?family=Architects+Daughter' rel='stylesheet' type='text/css'>
+	<link rel="stylesheet" type="text/css" href="stylesheet.css" media="screen">
+
+
+	<script type="text/javascript">
+	<!--//
+	function goToLnc(mySelect) {
+	PageIndex2=mySelect.selectedIndex;
+	{
+	if (mySelect.options[PageIndex2].value != "none") {
+		//this is the key code in the JavaScript to open the new page in the iframe:-
+		frames['iframe'].location.href = mySelect.options[PageIndex2].value;
+	}
+	}
+	}
+
+	//-->
+	</script>
+</head>
+
+<body>
+<div id = "content-wrapper">
+<div class="inner clearfix">
+<section id = "main-content">
+
+<h2>Overlapping Coding Transcripts</h2>
+PARAMETERS<p><code>Parameters: --sense_min SENSE_MIN --antisense_min ANTISENSE_MIN</code>
+FILTERED<p>NUM_FILTERED transcripts were removed because they overlapped an annotated coding transcript.</p>
+CUSTOM<p>To view these transcripts in the UCSC genome browser session below, load CUSTOM_PATH by clicking My Data -> Custom Tracks -> Add Custom Track -> Go To Genome Browser.
+</p>
+<form name="overlapping">
+Select transcript to view:  
+<select name="selectLnc" onChange="goToLnc(this.form.selectLnc)">
+OPTIONS
+</select>
+</form>
+<iframe name="iframe" src="http://genome.ucsc.edu/cgi-bin/hgTracks?hgS_doOtherUser=submit&hgS_otherUserName=jjennychen&hgS_otherUserSessionName=filterLncs.mm9" width="1200" height="1200" style="transform: scale(0.76); -webkit-transform: scale(0.76); -webkit-transform-origin: 0 0; -moz-transform: scale(0.76); -moz-transform-origin: 0 0; -o-transform: scale(0.76); -o-transform-origin: 0 0; -ms-transform: scale(0.76); -ms-transform-origin: 0 0;"></iframe>
+</section>
+<aside id="sidebar">
+<a href="index.html"><h2>BACK</h2></a>
+</aside>
+
+</div>
+</div>
+</body></html>
