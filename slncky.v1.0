@@ -9,7 +9,6 @@ from multiprocessing import Lock, Process, Queue
 import time
 from copy import deepcopy
 import math
-import tarfile
 
 REALPATH = ''
 ALIGNTRANSCRIPTS = ''
@@ -1099,8 +1098,7 @@ def main():
 		if not args.no_web:
 			coding_alignments_dir = args.out_prefix + "_alignToCoding/"
 			if not os.path.exists(coding_alignments_dir):
-				cmd = ["mkdir", coding_alignments_dir]
-				subprocess.call(cmd)
+				os.mkdir(coding_alignments_dir)
 
 		if "ORTHOLOG" in ANNOTS and "LIFTOVER" in ANNOTS and "GENOME_FA" in ANNOTS and "GENOME_FA" in ORTH_ANNOTS and "CODING" in ORTH_ANNOTS:
 			CODING_BLAST_FILTER = blastToOrtholog(lncs, ANNOTS, ORTH_ANNOTS, "CODING", args.coding_blast_min, args.threads, coding_alignments_dir)
@@ -1195,6 +1193,17 @@ def main():
 					splitline = line.split()
 					if splitline[3].strip() in blastToCodingCoding:
 						blastToCodingCodingBed.write(line)
+			blastToCodingLncBed.close()
+			blastToCodingCodingBed.close()
+
+			#tar
+			null = open("/dev/null", 'w')
+			cmd = ['tar', '-czvf', pre+coding_alignments_dir[0:-1]+".tar.gz", pre+coding_alignments_dir]
+			subprocess.check_call(cmd, stdout = null, stderr = null)
+			null.close()
+			cmd = ['rm', '-rf', pre+coding_alignments_dir]
+			subprocess.check_call(cmd)
+
 
 		for x in SELF_BLAST_FILTER:
 			filtered.write("%s blasts to %s with %0.1f%% identity and %0.1f%% coverage. Appears to be duplication.\n" % (x[0], x[1], float(x[2]), float(x[3])))
@@ -1205,8 +1214,9 @@ def main():
 
 		alignments_dir = args.out_prefix+"_alignments/"
 		if not os.path.exists(alignments_dir):
-			cmd = ['mkdir', alignments_dir]
-			subprocess.check_call(cmd)
+			#cmd = ['mkdir', alignments_dir]
+			#subprocess.check_call(cmd)
+			os.mkdir(alignments_dir)
 		lncBed = open(alignments_dir+args.assembly+".lincs.bed", 'w')
 		orthBed = open(alignments_dir+ANNOTS["ORTHOLOG"][0]+".lincs.bed", 'w')
 
@@ -1260,18 +1270,14 @@ def main():
 				lncBed.write(lncBedEntry)
 				orthBed.write(orthBedEntry)
 				orthologs_top.write("%s\t%s\t%s\t%s\t%.2f\t%.2f\t%s\t%s\n" % (entry[0], entry[6], entry[1], entry[7], entry[2], entry[3], entry[4], entry[5]))
-			
-			#tar alignment file
-			#with tarfile.open(alignments_dir[0:-1]+".tar.gz", "w:gz") as tar:
-			#	tar.add(alignments_dir, arcname=os.path.basename(alignments_dir))
-			#tar.close()
-			#os.system("tar -czvf "+alignments_dir[0:-1]+".tar.gz "+alignments_dir)
-			
+			lncBed.close()
+			orthBed.close()
+		
+			null = open("/dev/null", 'w')
 			cmd = ['tar', '-czvf', alignments_dir[0:-1]+".tar.gz", alignments_dir]
-			#print cmd
-			ret = subprocess.check_call(cmd)
-			#print ret
-			
+			subprocess.check_call(cmd, stdout=null, stderr=null)
+			cmd = ['rm', '-rf', alignments_dir]
+			subprocess.check_call(cmd)
 
 		else:
 			print "Not enough information to search for orthologs! Please check you have genome fastas for both species, a liftOver file, and an ortholog noncoding file specificied in your annotations.config"
