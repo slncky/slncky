@@ -459,6 +459,10 @@ def main():
 
 				if stringA[i] !="-": 
 					baseA += 1
+	
+	mafout.close()
+
+
 	category = categorizeLnc(alignments, numExonsA, numExonsB)
 	
 	alignment.write("alignmentID\tgeneA\tgeneB\texonID\tgeneID\tmaxContiguousIntron\texonsAlignedA\texonsAlignedB\tcategory\n")
@@ -473,6 +477,7 @@ def main():
 			alignment.write("%d," % exon)
 		alignment.write("\t")
 		alignment.write("%s\n" % category)
-
+	
+	alignment.close()
 if __name__ == "__main__":
 	main()
