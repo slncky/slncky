@@ -9,7 +9,7 @@ from multiprocessing import Lock, Process, Queue
 import time
 from copy import deepcopy
 import math
-
+import tarfile
 
 REALPATH = ''
 ALIGNTRANSCRIPTS = ''
@@ -212,7 +212,7 @@ def removeOverlap(lncs, annots, args, min):
 	
 	return newLncs, FILTER, numRemoved
 
-def alignTranscripts(lncPath, fa, orthPath, orthFa, tmpPath, FILTER, min, null):
+def alignTranscripts(lncPath, fa, orthPath, orthFa, tmpPath, FILTER, min, null, keep):
 	
 
 	if BEDTOOLS[0:-9] != "" and LASTZ[0:-6] != "":
@@ -225,7 +225,6 @@ def alignTranscripts(lncPath, fa, orthPath, orthFa, tmpPath, FILTER, min, null):
 		cmd = [ALIGNTRANSCRIPTS, lncPath, fa, orthPath, orthFa, tmpPath]
 	
 	ret = subprocess.call(cmd, stdout = null, stderr = null)
-
 	if ret == 0:
 
 		outFile = open(tmpPath+".alignment_identity.txt", 'r')
@@ -244,17 +243,23 @@ def alignTranscripts(lncPath, fa, orthPath, orthFa, tmpPath, FILTER, min, null):
 				category = line[8]
 		if exonID > 0:		
 			FILTER.put([line[1], line[2], exonID, seqID, category])
-
+			if not keep:
+				os.remove(tmpPath+".maf")
+	
 		os.remove(tmpPath+".alignment_identity.txt")
-		os.remove(tmpPath+".maf")
+		
 
 	FILTER.put(0)
 
-	os.remove(lncPath)
-	os.remove(orthPath)
+	#os.remove(lncPath)
+	#os.remove(orthPath)
 	
 
-def blastToOrtholog(lncs, annots, orth_annots, blastTo, min, n):
+def blastToOrtholog(lncs, annots, orth_annots, blastTo, min, n, alignments_dir):
+	##TODO: add code to make bed file, orth bed file, and maf.tar.gz file
+	##if blastTo == coding and website is on, make vis files
+	##always make files for noncoding
+
 	queue = Queue()
 	FILTER = []
 	FLUSHED = 0
@@ -290,7 +295,6 @@ def blastToOrtholog(lncs, annots, orth_annots, blastTo, min, n):
 			overlapBed = line[4]
 			for i in range(5, len(line)):
 				overlapBed += "\t"+line[i]
-	
 			lncFd, lncPath = tempfile.mkstemp()
 			lncFile = os.fdopen(lncFd, 'w')
 			lncFile.write(lncBed)
@@ -301,9 +305,14 @@ def blastToOrtholog(lncs, annots, orth_annots, blastTo, min, n):
 			orthFile.write(overlapBed)
 			orthFile.close()
 
-			tmpOutPath = orthPath+".out"
+			if alignments_dir == "":
+				keep = False
+				tmpOutPath = lncPath+".maf"
+			else:
+				keep = True
+				tmpOutPath = alignments_dir+lnc+"-"+overlapBed.split()[3].strip()
 			
-			p = Process(target=alignTranscripts, args=(lncPath, annots["GENOME_FA"][0], orthPath, orth_annots["GENOME_FA"][0], tmpOutPath, queue, min, null))
+			p = Process(target=alignTranscripts, args=(lncPath, annots["GENOME_FA"][0], orthPath, orth_annots["GENOME_FA"][0], tmpOutPath, queue, min, null, keep))
 			p.start()
 			#pids[p.pid] = [lncFile, file, gene, overlap]
 
@@ -568,6 +577,7 @@ def writeCodingBlast(TEMPLATE_PATH, out, coding_blast_min, CODING_BLAST_FILTER):
 			lncs = set()
 			for x in CODING_BLAST_FILTER: lncs.add(x[0])
 			line = line.replace("NUM_GENES", str(len(lncs)))
+			line = line.replace("TAR", out+"_html/"+out+"_alignToCoding.tar.gz")
 			line = line.replace("FILTERED", "")
 
 		html.write(line)
@@ -727,6 +737,24 @@ def writeRepeat(TEMPLATE_PATH, out, REPEAT_FILTER, REPEAT_CONTENT, repeat_min, c
 		else:
 			html.write(line)
 
+def writeOrth(TEMPLATE_PATH, out, noncoding_blast_min, ORTHOLOGS):
+	pre = out+"_html/"
+
+	template_orthologs = open(TEMPLATE_PATH+"orthologs.html", 'r')
+	html = open(pre+"orthologs.html", 'w')
+	
+	for line in template_orthologs.readlines():
+		if line.startswith("PARAMETERS"):
+			line = line.replace("PARAMETERS", "")
+			line = line.replace("NONCODING_BLAST_MIN", str(noncoding_blast_min))
+		elif line.startswith("ORTHOLOGS"):
+			lncs = set()
+			for x in ORTHOLOGS: lncs.add(x[0])
+			line = line.replace("NUM_GENES", str(len(lncs)))
+			line = line.replace("ORTHOLOGS", "")
+			line = line.replace("TAR", out+"_alignments.tar.gz")
+		html.write(line)
+
 def writeWebsite(ANNOTS, out, ogLncs, sense_min, antisense_min, coding_blast_min, SENSE_FILTER, ANTISENSE_FILTER, SENSE_MAPPED_CODING_FILTER, ANTISENSE_MAPPED_CODING_FILTER, CODING_BLAST_FILTER, SELF_BLAST_FILTER, id_min, REPEAT_FILTER, REPEAT_CONTENT, repeat_min, cleanLncs):
 
 	pre = out+"_html/"
@@ -742,7 +770,10 @@ def writeWebsite(ANNOTS, out, ogLncs, sense_min, antisense_min, coding_blast_min
 	index = open(pre+"index.html", 'w')
 
 	for line in template_index.readlines():
-		if line.startswith("FILTER1"):
+		if line.startswith("FILTERHEADER"):
+			line = line.replace("FILTERHEADER", "")
+			index.write(line)
+		elif line.startswith("FILTER1"):
 			if "CODING" in ANNOTS or "MAPPED_CODING" in ANNOTS:
 				line = line.replace("FILTER1", "")
 				index.write(line)
@@ -762,10 +793,67 @@ def writeWebsite(ANNOTS, out, ogLncs, sense_min, antisense_min, coding_blast_min
 				line = line.replace("FILTER4", "")
 				index.write(line)
 				writeRepeat(TEMPLATE_PATH, out, REPEAT_FILTER, REPEAT_CONTENT, repeat_min, cleanLncs)
-		else: 
+		elif not line.startswith("NOFILTERHEADER"): 
 			index.write(line)
 
 
+
+def writeNoFilterWebsite(out):
+
+	pre = out+"_html/"
+	TEMPLATE_PATH = REALPATH+"/html_templates/"
+	template_css = TEMPLATE_PATH+"/stylesheet.css"
+	
+	#cp template sheet over
+	cmd = ['cp', template_css, pre]
+	subprocess.check_call(cmd)
+	
+	#write index
+	template_index = open(TEMPLATE_PATH+"index.html", 'r')
+	index = open(pre+"index.html", 'w')
+
+	for line in template_index.readlines():
+		if line.startswith("NOFILTERHEADER"):
+			line = line.replace("NOFILTERHEADER", "")
+			index.write(line)
+		elif not line.startswith("FILTER"):
+			index.write(line)
+
+
+def writeOrthSearch(out, noncoding_blast_min, ORTHOLOGS):
+
+	pre = out+"_html/"
+	index = open(pre+"index.html", 'r')
+	new_index = open(pre+"tmp", 'w')
+	TEMPLATE_PATH = REALPATH+"/html_templates/"
+	
+	for line in index.readlines():
+		if line.startswith("ORTH"):
+			line = line.replace("ORTH", "")
+			new_index.write(line)
+			writeOrth(TEMPLATE_PATH, out, noncoding_blast_min, ORTHOLOGS)
+		elif not line.startswith("NOORTH"):
+			new_index.write(line)
+	
+	cmd = ['mv', pre+"tmp", pre+"index.html"]
+	subprocess.call(cmd)
+
+def writeNoOrthSearch(out):
+
+	pre = out+"_html/"
+	index = open(pre+"index.html", 'r')
+	new_index = open(pre+"tmp", 'w')
+	TEMPLATE_PATH = REALPATH+"/html_templates/"
+	
+	for line in index.readlines():
+		if line.startswith("NOORTH"):
+			line = line.replace("NOORTH", "")
+			new_index.write(line)
+		elif not line.startswith("ORTH"):
+			new_index.write(line)
+	
+	cmd = ['mv', pre+"tmp", pre+"index.html"]
+	subprocess.call(cmd)
 
 def categorizeLncsByAnnots(lncs, ORTHOLOGS, ANNOTS):
 	if "MIRNA" not in ANNOTS or "SNORNA" not in ANNOTS:
@@ -885,6 +973,7 @@ def main():
 	parser.add_argument('bedfile', type=str, help='bed12 file of transcripts')
 	parser.add_argument('assembly', type=str, help='assembly')
 	parser.add_argument('out_prefix', type=str, help='out_prefix')
+	parser.add_argument('--overwrite', '-ow', action='store_true', help='forces overwrite of out_prefix.bed')
 	parser.add_argument('--config', '-c', type=str, help='path to assembly.config file. default uses config file in same directory as slncky')
 	parser.add_argument('--sense_min', type=float, help='min exonic overlap to filter out sense overlapping transcript, default = 0', default = 0)
 	parser.add_argument('--antisense_min', type=float, help='min exonic overlap to filter out antisense overlapping transcript, default = 0.3', default=0.3)
@@ -900,7 +989,6 @@ def main():
 	parser.add_argument('--no_filter', action='store_true', help='flag if you don\'t want lncs to be filtered before searching for ortholog')
 	parser.add_argument('--no_orth_search', action='store_true', help='flag if you only want to filter lncs but don\'t want to search for orthologs')
 	parser.add_argument('--no_web', action='store_true', help='flag if you don\'t want website written visualizing transcripts that were filtered out')
-
 	args = parser.parse_args()
 	
 	global REALPATH
@@ -955,7 +1043,7 @@ def main():
 
 	if not args.no_filter:
 	
-		if os.path.isfile(args.out_prefix+".bed"):
+		if os.path.isfile(args.out_prefix+".bed") and not args.overwrite:
 			print "%s.bed already exists! Please choose a different out_prefix." % args.out_prefix
 			sys.exit(1)
 
@@ -1006,11 +1094,19 @@ def main():
 
 
 		#BLAST TO CODING ORTHOLOGS
+		#make directory for coding
+		coding_alignments_dir = ""
+		if not args.no_web:
+			coding_alignments_dir = args.out_prefix + "_alignToCoding/"
+			if not os.path.exists(coding_alignments_dir):
+				cmd = ["mkdir", coding_alignments_dir]
+				subprocess.call(cmd)
+
 		if "ORTHOLOG" in ANNOTS and "LIFTOVER" in ANNOTS and "GENOME_FA" in ANNOTS and "GENOME_FA" in ORTH_ANNOTS and "CODING" in ORTH_ANNOTS:
-			CODING_BLAST_FILTER = blastToOrtholog(lncs, ANNOTS, ORTH_ANNOTS, "CODING", args.coding_blast_min, args.threads)
+			CODING_BLAST_FILTER = blastToOrtholog(lncs, ANNOTS, ORTH_ANNOTS, "CODING", args.coding_blast_min, args.threads, coding_alignments_dir)
 			lncs, numRemoved = removeLncs(lncs, CODING_BLAST_FILTER)
 			print "\r        ... %d transcripts that blast >%d%% to ortholog coding transcript                                                                   " % (numRemoved, int(args.coding_blast_min*100))
-
+		
 		#SELF-BLAST TO FIND DUPLICATIONS
 		if "GENOME_FA" in ANNOTS:
 			lncs, SELF_BLAST_FILTER, numRemoved = selfBlast(lncs, ANNOTS, args.selfblast_coverage_min, args.selfblast_identity_min, args.threads)
@@ -1029,10 +1125,18 @@ def main():
 		if not args.no_web:
 
 			pre = args.out_prefix+"_html/"
-			if not os.path.exists(pre):
-				cmd = ['mkdir', pre]
+			if os.path.exists(pre):
+				print pre+" already exists. overwriting..."
+				cmd = ['rm', '-rf', pre]
 				subprocess.check_call(cmd)
-	
+
+			cmd = ['mkdir', pre]
+			subprocess.check_call(cmd)
+			
+			#move coding alignments into _html
+			cmd = ['mv', coding_alignments_dir, pre]
+			subprocess.call(cmd)
+
 			ucsc = open(pre+args.out_prefix+".overlap.bed", 'w')
 			ucscSet = set()
 			ucsc.write("track name=overlapping transcripts type=bed visibility=2\n")
@@ -1066,21 +1170,58 @@ def main():
 			if not args.no_web and x[0] not in ucscSet:
 				ucsc.write(ogLncs[x[0]])
 				ucscSet.add(x[0])
+		
+		#make bed files for alignment visualization
+		if not args.no_web:
+			blastToCodingLncs = set()
+			blastToCodingCoding = set()
+			blastToCodingLncBed = open(pre+coding_alignments_dir+args.assembly+".lincs.bed", 'w')
+			blastToCodingCodingBed = open(pre+coding_alignments_dir+ANNOTS["ORTHOLOG"][0]+".coding.bed", 'w')
+
 		for x in CODING_BLAST_FILTER:
+			if not args.no_web:
+				blastToCodingLncs.add(x[0])
+				blastToCodingCoding.add(x[1])
 			filtered.write("%s blasts to %s transcript %s with %0.1f%% exonic identity\n" % (x[0], ANNOTS["ORTHOLOG"][0], x[1], float(x[2])*100.0))
+	
+		if not args.no_web:
+			for blastToCodingLnc in blastToCodingLncs:
+				blastToCodingLncBed.write(ogLncs[blastToCodingLnc])
+			for x in ORTH_ANNOTS["CODING"]:
+				curCodingBed = open(x, 'r')
+				while True:
+					line = curCodingBed.readline()
+					if line == "": break
+					splitline = line.split()
+					if splitline[3].strip() in blastToCodingCoding:
+						blastToCodingCodingBed.write(line)
+
 		for x in SELF_BLAST_FILTER:
 			filtered.write("%s blasts to %s with %0.1f%% identity and %0.1f%% coverage. Appears to be duplication.\n" % (x[0], x[1], float(x[2]), float(x[3])))
 		for x in REPEAT_FILTER:
 			filtered.write("%s has %.1f%% repeat content.  Appears to be mapping artifact.\n" % (x[0], x[1] * 100))
-
-		#WRITE WEBSITE
-
-		if not args.no_web: writeWebsite(ANNOTS, args.out_prefix, ogLncs, args.sense_min, args.antisense_min, args.coding_blast_min, SENSE_FILTER, ANTISENSE_FILTER, SENSE_MAPPED_CODING_FILTER, ANTISENSE_MAPPED_CODING_FILTER, CODING_BLAST_FILTER, SELF_BLAST_FILTER, args.selfblast_identity_min, REPEAT_FILTER, REPEAT_CONTENT, args.repeat_min, lncs)
-
+	#ORTH SEARCH
 	if not args.no_orth_search:
+
+		alignments_dir = args.out_prefix+"_alignments/"
+		if not os.path.exists(alignments_dir):
+			cmd = ['mkdir', alignments_dir]
+			subprocess.check_call(cmd)
+		lncBed = open(alignments_dir+args.assembly+".lincs.bed", 'w')
+		orthBed = open(alignments_dir+ANNOTS["ORTHOLOG"][0]+".lincs.bed", 'w')
+
+
 		if "NONCODING" in ORTH_ANNOTS and "LIFTOVER" in ANNOTS and "GENOME_FA" in ANNOTS and "GENOME_FA" in ORTH_ANNOTS:
 			print "Searching for orthologs..."
-			ORTHOLOGS = blastToOrtholog(lncs, ANNOTS, ORTH_ANNOTS, "NONCODING", args.noncoding_blast_min, args.threads)
+
+			#load noncoding bed for later:
+			noncodingBed = {}
+			for annot_file in ORTH_ANNOTS["NONCODING"]:
+				annot = open(annot_file, 'r')
+				for line in annot:
+					noncodingBed[line.split()[3].strip()] = line
+
+			ORTHOLOGS = blastToOrtholog(lncs, ANNOTS, ORTH_ANNOTS, "NONCODING", args.noncoding_blast_min, args.threads, alignments_dir)
 			tmpLncs, numRemoved = removeLncs(lncs, ORTHOLOGS)
 			print "\r        ... %d transcripts with noncoding ortholog!                                                                                 \n" % numRemoved
 			
@@ -1112,9 +1253,41 @@ def main():
 				orthologs.write("%s\t%s\t%s\t%s\t%.2f\t%.2f\t%s\t%s\n" % (entry[0], entry[6], entry[1], entry[7], entry[2], entry[3], entry[4], entry[5]))
 		
 			for lnc,entry in lncToOrtholog.iteritems():
+				orth = entry[1]
+				lncBedEntry = ogLncs[lnc]
+				orthBedEntry = noncodingBed[orth]
+				
+				lncBed.write(lncBedEntry)
+				orthBed.write(orthBedEntry)
 				orthologs_top.write("%s\t%s\t%s\t%s\t%.2f\t%.2f\t%s\t%s\n" % (entry[0], entry[6], entry[1], entry[7], entry[2], entry[3], entry[4], entry[5]))
-		
+			
+			#tar alignment file
+			#with tarfile.open(alignments_dir[0:-1]+".tar.gz", "w:gz") as tar:
+			#	tar.add(alignments_dir, arcname=os.path.basename(alignments_dir))
+			#tar.close()
+			#os.system("tar -czvf "+alignments_dir[0:-1]+".tar.gz "+alignments_dir)
+			
+			cmd = ['tar', '-czvf', alignments_dir[0:-1]+".tar.gz", alignments_dir]
+			#print cmd
+			ret = subprocess.check_call(cmd)
+			#print ret
+			
+
 		else:
 			print "Not enough information to search for orthologs! Please check you have genome fastas for both species, a liftOver file, and an ortholog noncoding file specificied in your annotations.config"
+
+	#WRITE WEBSITE
+	pre = args.out_prefix+"_html/"
+
+	if not args.no_web: 
+		if not args.no_filter:
+			writeWebsite(ANNOTS, args.out_prefix, ogLncs, args.sense_min, args.antisense_min, args.coding_blast_min, SENSE_FILTER, ANTISENSE_FILTER, SENSE_MAPPED_CODING_FILTER, ANTISENSE_MAPPED_CODING_FILTER, CODING_BLAST_FILTER, SELF_BLAST_FILTER, args.selfblast_identity_min, REPEAT_FILTER, REPEAT_CONTENT, args.repeat_min, lncs)
+		else:
+			writeNoFilterWebsite(args.out_prefix)
+		if not args.no_orth_search:
+			writeOrthSearch(args.out_prefix, args.noncoding_blast_min, ORTHOLOGS)
+		else:
+			writeNoOrthSearch(args.out_prefix)
+
 if __name__ == "__main__":
 	main()
