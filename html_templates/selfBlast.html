@@ -26,25 +26,23 @@ text.active {
 <div class="inner clearfix">
 <section id = "main-content">
 <h2>Duplications</h2>
-PARAMETERS<p><code>Parameters: --selfblast_identity_min SELFBLAST_ID_MIN</code></p>
 
 FILTERED<p>NUM_FILTERED transcripts were removed because the aligned to another transcript with >ID% identity. These are likely pseudogenes or duplications of rapidly-expanding coding gene families (e.g. ZFPs, olfactory proteins, etc.)</p>
 
 <script src="http://d3js.org/d3.v2.min.js?2.8.1" charset="utf-8" type="text/javascript"></script>
 <script type="text/javascript">
 
-	var margin = {top: 80, right: 0, bottom: 10, left: 30},
-		width = 600,
-		height = 600;
+	var margin = {top: 200, right: 0, bottom: 0, left: 200},
+		width = 800,
+		height = 800;
 
 	var x = d3.scale.ordinal().rangeBands([0, width]),
-		z = d3.scale.linear().domain([40, 100]).clamp(true),
+		z = d3.scale.linear().domain([0, 100]).clamp(true),
 		c = d3.scale.category10().domain(d3.range(10));
 
 	var svg = d3.select("section").append("svg")
 		.attr("width", width + margin.left + margin.right)
 		.attr("height", height + margin.top + margin.bottom)
-		.style("margin-left", margin.left + "px")
 	  .append("g")
 		.attr("transform", "translate(" + margin.left + "," + margin.top + ")");
 	
@@ -101,6 +99,7 @@ JSON	d3.json("JSON_FILE", function(miserables) {
 		  .attr("class", "linc")
 		  .attr("dy", ".32em")
 		  .attr("text-anchor", "end")
+		  .attr("font-size", "8px")
 		  .text(function(d, i) { return nodes[i].name; });
 
 	  var column = svg.selectAll(".column")
@@ -117,6 +116,7 @@ JSON	d3.json("JSON_FILE", function(miserables) {
 		  .attr("y", x.rangeBand() / 2)
 		  .attr("dy", ".32em")
 		  .attr("text-anchor", "start")
+		  .attr("font-size", "8px")
 		  .text(function(d, i) { return nodes[i].name; });
 
 	  function row(row) {
@@ -138,8 +138,8 @@ JSON	d3.json("JSON_FILE", function(miserables) {
 			.attr("class", "cell")
 		   .attr("x", function(d) { return x(d.x) + (x.rangeBand()/2-11); })
 			.attr("y", function(d) { return x.rangeBand() / 2; })
+	  		.attr("font-size", "8px") 
 			.text(function(d) {return d.z+"%";});
-	   
 	  }
 
 

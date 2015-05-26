@@ -28,9 +28,14 @@
 <section id = "main-content">
 
 <h2>Overlapping Coding Transcripts</h2>
-PARAMETERS<p><code>Parameters: --sense_min SENSE_MIN --antisense_min ANTISENSE_MIN</code>
-FILTERED<p>NUM_FILTERED transcripts were removed because they overlapped an annotated coding transcript.</p>
-CUSTOM<p>To view these transcripts in the UCSC genome browser session below, load CUSTOM_PATH by clicking My Data -> Custom Tracks -> Add Custom Track -> Go To Genome Browser.
+PARAMETERS<p><code>Parameters: --min_overlap MIN_OVERLAP</code>
+FILTERED<p>NUM_FILTERED transcripts were removed because they overlapped an annotated coding or mapped coding transcript.</p>
+<p>To view these transcripts in the UCSC genome browser session below:
+<ul>
+<li>Click 'My Data' (top blue bar, fourth from right) -> Custom Tracks.</li>
+CUSTOM<li>Click 'add custom tracks', then Browse... Load CUSTOM_PATH and hit 'Submit'.</li>
+<li>Click 'go to genome browser' to view filtered transcripts.</li>
+</ul>
 </p>
 <form name="overlapping">
 Select transcript to view:  
@@ -38,7 +43,7 @@ Select transcript to view:
 OPTIONS
 </select>
 </form>
-<iframe name="iframe" src="http://genome.ucsc.edu/cgi-bin/hgTracks?hgS_doOtherUser=submit&hgS_otherUserName=jjennychen&hgS_otherUserSessionName=filterLncs.mm9" width="980" height="1200" style="transform: scale(0.76); -webkit-transform: scale(0.76); -webkit-transform-origin: 0 0; -moz-transform: scale(0.76); -moz-transform-origin: 0 0; -o-transform: scale(0.76); -o-transform-origin: 0 0; -ms-transform: scale(0.76); -ms-transform-origin: 0 0;"></iframe>
+<iframe name="iframe" src="http://genome.ucsc.edu/cgi-bin/hgTracks?hgS_doOtherUser=submit&hgS_otherUserName=jjennychen&hgS_otherUserSessionName=filterLncs.mm9" width="1200" height="1200" style="transform: scale(0.76); -webkit-transform: scale(0.76); -webkit-transform-origin: 0 0; -moz-transform: scale(0.76); -moz-transform-origin: 0 0; -o-transform: scale(0.76); -o-transform-origin: 0 0; -ms-transform: scale(0.76); -ms-transform-origin: 0 0;"></iframe>
 </section>
 <aside id="sidebar">
 <a href="index.html"><h2>BACK</h2></a>
