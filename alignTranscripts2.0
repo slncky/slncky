@@ -114,31 +114,6 @@ def alignFa(paddedAFaPath, paddedBFaPath, unmask, gap_open, gap_extend):
 	subprocess.check_call(cmd)
 	return tmpPath
 
-def categorizeLnc(alignments, numExonsA, numExonsB):
-	exonsAlignedA = set()
-	exonsAlignedB = set()
-	maxExonId = 0
-	maxIntronId = 0
-
-	for a in alignments:
-		for exon in a[8]: exonsAlignedA.add(exon)
-		for exon in a[9]: exonsAlignedB.add(exon)
-		if a[3] > maxExonId: 
-			maxExonId = a[3]
-			maxIntronId = a[5]
-	
-	if (len(exonsAlignedA) == 1 or len(exonsAlignedB) == 1) and (numExonsA!=1 and numExonsB!=1): 
-		if maxExonId >=0.1: return "divergent"
-		else: return "divergent/bad_alignment"
-	
-	if maxExonId < 0.1: return "mir_host/bad_alignment"
-	if maxExonId >= 0.2:
-		if maxIntronId >= 0.1: return "sno_host"
-		else: return "intergenic"
-	else:
-		if maxIntronId >=0.05: return "sno_host"
-		else: return "intergenic"
-
 code = {
 	'TTT': 'Phe',
 	'TTC': 'Phe',
@@ -453,7 +428,7 @@ def main():
 		if (len(geneB)==0):
 			print "geneB %s not found! exiting..." % args.geneB
 			sys.exit(1)
-	
+
 	paddedABedPath = writePaddedBed(geneA, args.pad, genomeA)
 	paddedBBedPath = writePaddedBed(geneB, args.pad, genomeB)
 
@@ -698,8 +673,8 @@ def main():
 		maxShuffleScore = shuffleScores[int(floor(len(shuffleScores)* (1.0-args.pvalue)))]
 		maxScore = maxShuffleScore
 		for a in alignments:
-			if a[10] > maxScore: 
-				maxScore = a[10]
+			if a[9] > maxScore: 
+				maxScore = a[9]
 				break
 	
 	cmd = ['rm', paddedABedPath, paddedBBedPath, paddedAFaPath, paddedBFaPath, mafPath]
@@ -719,16 +694,17 @@ def main():
 		for line in mafHeader:
 			mafout.write(line+"\n")
 		
-		#category = categorizeLnc(alignments, numExonsA, numExonsB)
 		
-		alignment.write("#alignmentID\tgeneA\tgeneB\texonID_A\tgeneID_A\texonID_B\tgeneID_B\texonsAlignedA\texonsAlignedB\n")
+		alignment.write("#alignmentID\talignmentScore\tgeneA\tgeneB\texonID_A\tgeneID_A\texonID_B\tgeneID_B\texonsAlignedA\texonsAlignedB\n")
 		counter = -1
+		
+		alignments.sort(key=lambda x: x[9], reverse=True)
 		for a in alignments:
 			counter += 1
-			if (not args.shuffle_bg or a[10] > maxShuffleScore):
-				alignment.write("%d\t%s\t%s\t%0.3f\t%0.3f\t%0.3f\t%0.3f\t%s\t" % (a[0], a[1], a[2], a[3], a[4], a[5], a[6]))
+			if (not args.shuffle_bg or a[9] > maxShuffleScore):
+				alignment.write("%d\t%d\t%s\t%s\t%0.3f\t%0.3f\t%0.3f\t%0.3f\t" % (a[0], a[9], a[1], a[2], a[3], a[4], a[5], a[6]))
+				a[7].sort()
 				a[8].sort()
-				a[9].sort()
 				for exon in a[7]:
 					alignment.write("%d," % exon)
 				alignment.write("\t")
@@ -738,5 +714,6 @@ def main():
 				
 				mafout.write(mafs[counter])
 		alignment.close()
+
 if __name__ == "__main__":
 	main()
