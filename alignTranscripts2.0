@@ -243,6 +243,7 @@ def checkForOrfs(stringA, stringB, baseA, baseB, pad, geneAStart, geneAEnd, exon
 	if strandB == "+": baseBGen = geneBStart - pad + baseB + 1
 	else: baseBGen = geneBEnd - (baseB - pad)
 	
+	#get all possible start codons
 	for i in range(len(stringA)):
 		exonA = inExon(baseAGen, geneAStart, exonStartsA, exonSizesA, numExonsA, strandA) 
 		exonB = inExon(baseBGen, geneBStart, exonStartsB, exonSizesB, numExonsB, strandB)
@@ -261,7 +262,6 @@ def checkForOrfs(stringA, stringB, baseA, baseB, pad, geneAStart, geneAEnd, exon
 			if strandB == "+": baseBGen += 1
 			else: baseBGen -= 1
 
-	
 	for i in range(len(starts)):
 		valid = True
 		baseAGen = startBaseA[i]
@@ -289,9 +289,6 @@ def checkForOrfs(stringA, stringB, baseA, baseB, pad, geneAStart, geneAEnd, exon
 
 		
 		#truncate at first stop codon
-		#print "^^^^^^^^^^^^^^^^^^"
-		#print orfA
-		#print orfB
 
 		truncOrfA = ""
 		truncOrfB = ""
@@ -498,8 +495,9 @@ def main():
 		exonsAlignedA = []
 		exonsAlignedB = []
 		counter = 0
-		
-
+		indelRate = 0
+		inIndel = False
+		seen = 0
 		for line in maf:
 			line = line.strip()
 			if line.startswith("#"): 
@@ -521,7 +519,10 @@ def main():
 
 			#at line break, reset
 			if line == "" and stringA !="":
-				alignments.append([counter, geneAName, geneBName, exonId / (exonASize*1.0), id / (geneASize*1.0), exonId / (exonBSize*1.0), id / (geneBSize*1.0), exonsAlignedA, exonsAlignedB, score])
+				if seen == 0:
+					alignments.append([counter, geneAName, geneBName, exonId / (exonASize*1.0), id / (geneASize*1.0), exonId / (exonBSize*1.0), id / (geneBSize*1.0), 0, exonsAlignedA, exonsAlignedB, score])
+				else:
+					alignments.append([counter, geneAName, geneBName, exonId / (exonASize*1.0), id / (geneASize*1.0), exonId / (exonBSize*1.0), id / (geneBSize*1.0), indelRate / (seen*1.0), exonsAlignedA, exonsAlignedB, score])
 					
 
 				#write maf
@@ -551,7 +552,8 @@ def main():
 							curOrf.append(geneAName)
 							curOrf.append(geneBName)
 							finalOrfs.append(curOrf)
-
+				
+				#reset stats
 				exonId = 0
 				intronId = 0
 				maxIntronId = 0
@@ -566,7 +568,10 @@ def main():
 				truncBStart = -1
 				exonsAlignedA = []
 				exonsAlignedB = []
-
+				indelRate = 0
+				inIndel = False	
+				seen = 0
+			#if stringA and stringB populated, crawl alignments
 			if stringB != "" and stringA !="":
 				if strandA == "+": baseAGen = geneAStart + baseA - args.pad + 1
 
@@ -588,28 +593,34 @@ def main():
 					exonA = inExon(baseAGen, geneAStart, exonStartsA, exonSizesA, numExonsA, strandA) 
 					exonB = inExon(baseBGen, geneBStart, exonStartsB, exonSizesB, numExonsB, strandB)
 					
-					if stringB[i].upper()==stringA[i].upper() and baseAGen >= geneAStart and baseAGen < geneAEnd and stringB[i] != "-" and stringA[i]!="-" and baseBGen >= geneBStart and baseBGen < geneBEnd:
-						id += 1
-						if exonA != -1 and exonB!= -1:
-							exonId += 1
-							if exonA not in exonsAlignedA: exonsAlignedA.append(exonA)
-							if exonB not in exonsAlignedB: exonsAlignedB.append(exonB)
-							if intronId > maxIntronId:
-								maxIntronId = intronId
-								maxIntronNum = intronNum
-							intronId = 0
+					
+					#if its inside gene
+					if baseAGen >= geneAStart and baseAGen < geneAEnd and baseBGen >= geneBStart and baseBGen < geneBEnd:
+						if stringB[i].upper()==stringA[i].upper():
+							id += 1
+
+						#if it's inside exons
+						if exonA != -1 and exonB != -1:
+							seen += 1
+							#if in exons and '-' at alignment
+							if stringA[i] == "-" or stringB[i] == "-":
+								if not inIndel:
+									inIndel = True
+									indelRate += 1
+							else:
+								inIndel = False
+							#if stringA == stringB, increase exonID
+							if stringB[i].upper()==stringA[i].upper():
+								exonId += 1
+								if exonA not in exonsAlignedA: exonsAlignedA.append(exonA)
+								if exonB not in exonsAlignedB: exonsAlignedB.append(exonB)
 
 
-						elif exonA == -1 and exonB == -1 and stringB[i].isupper() and stringA[i].isupper():
-							intronId += 1
-							intronNum = inIntron(baseAGen, exonStartsA, exonSizesA, numExonsA, strandA, geneASize)
+						#if at introns, reset inIndel
 						else:
-							if intronId > maxIntronId:
-								maxIntronId = intronId
-								maxIntronNum = intronNum
-							intronId = 0
-
-
+							if inIndel: inIndel = False
+					
+					
 					if stringA[i] !="-": 
 						if strandA == "+": baseAGen += 1
 						else: baseAGen -= 1
@@ -695,20 +706,20 @@ def main():
 			mafout.write(line+"\n")
 		
 		
-		alignment.write("#alignmentID\talignmentScore\tgeneA\tgeneB\texonID_A\tgeneID_A\texonID_B\tgeneID_B\texonsAlignedA\texonsAlignedB\n")
+		alignment.write("#alignmentID\talignmentScore\tgeneA\tgeneB\texonID_A\tgeneID_A\texonID_B\tgeneID_B\tindelRate\texonsAlignedA\texonsAlignedB\n")
 		counter = -1
 		
-		alignments.sort(key=lambda x: x[9], reverse=True)
+		alignments.sort(key = lambda x: (x[9], x[10]), reverse=True)
 		for a in alignments:
 			counter += 1
 			if (not args.shuffle_bg or a[9] > maxShuffleScore):
-				alignment.write("%d\t%d\t%s\t%s\t%0.3f\t%0.3f\t%0.3f\t%0.3f\t" % (a[0], a[9], a[1], a[2], a[3], a[4], a[5], a[6]))
-				a[7].sort()
+				alignment.write("%d\t%d\t%s\t%s\t%0.3f\t%0.3f\t%0.3f\t%0.3f\t%0.3f\t" % (a[0], a[10], a[1], a[2], a[3], a[4], a[5], a[6], a[7]))
 				a[8].sort()
-				for exon in a[7]:
+				a[9].sort()
+				for exon in a[8]:
 					alignment.write("%d," % exon)
 				alignment.write("\t")
-				for exon in a[8]:
+				for exon in a[9]:
 					alignment.write("%d," % exon)
 				alignment.write("\n")
 				

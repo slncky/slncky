@@ -266,20 +266,18 @@ def alignTranscripts(lncPath, fa, orthPath, orthFa, tmpPath, FILTER, null, keep,
 	else:
 		cmd = [ALIGNTRANSCRIPTS, lncPath, fa, orthPath, orthFa, tmpPath, '--gap_open', gapOpen, '--gap_extend', gapExtend]
 	if shuffle:
-		cmd.append('--unmask')
+		#cmd.append('--unmask')
 		cmd.append('--shuffle_bg')
 	if orf:
 		cmd.append('--orf')
-	
 
 	ret = -1
 	try:
-		#ret = subprocess.check_call(cmd, stdout = null, stderr = null)
-		ret = subprocess.check_call(cmd)
+		ret = subprocess.check_call(cmd, stdout = null, stderr = null)
+		#ret = subprocess.check_call(cmd)
 	except subprocess.CalledProcessError as e:
 		FILTER.put(0)
 
-	FILTER.put(0)
 	
 	if ret == 0:
 		out = ""	
@@ -288,20 +286,22 @@ def alignTranscripts(lncPath, fa, orthPath, orthFa, tmpPath, FILTER, null, keep,
 			out = outFile.readlines()
 			outFile.close()
 	
-		exonID = -1
-		seqID = -1
 		for line in out:
 			if line.strip() == "": continue
 			line = line.split()
-
-			if len(line)>9 and line[4].strip() != "exonID_A" and float(line[4]) > exonID:
+			if len(line)>1 and line[4].strip() != "exonID_A":
+				alignNo = line[0]
 				geneA = line[2]
 				geneB = line[3]
 				exonID = float(line[4])
 				seqID = float(line[5])
-		
-		if exonID > -1:
-			FILTER.put([geneA, geneB, exonID, seqID])
+				indelRate = float(line[8])
+				exonsAlignedA = "NA"
+				exonsAlignedB = "NA"
+				if len(line) > 9:
+					exonsAlignedA = line[9]	
+					exonsAlignedB = line[10]
+				FILTER.put([geneA, geneB, exonID, seqID, indelRate, exonsAlignedA, exonsAlignedB, alignNo])
 		
 		if os.path.exists(tmpPath+".alignment_identity.txt"): 
 			os.remove(tmpPath+".alignment_identity.txt")
@@ -316,6 +316,7 @@ def alignTranscripts(lncPath, fa, orthPath, orthFa, tmpPath, FILTER, null, keep,
 			for line in orf:
 				if line.strip() == "": continue
 				if not line[0] == "#":
+					line = line.split()
 					orfQueue.put(line)
 			os.remove(tmpPath+".orfs.txt")
 		
@@ -323,6 +324,7 @@ def alignTranscripts(lncPath, fa, orthPath, orthFa, tmpPath, FILTER, null, keep,
 	os.remove(lncPath)
 	os.remove(orthPath)
 	
+	FILTER.put(0)
 
 def blastToOrtholog(lncs, annots, orth_annots, blastTo, n, alignments_dir, minMatch, multiple, pad, gapOpen, gapExtend, shuffle, orf):
 	queue = Queue()
@@ -347,7 +349,6 @@ def blastToOrtholog(lncs, annots, orth_annots, blastTo, n, alignments_dir, minMa
 			cmd += " | %s -minMatch=%.3f -multiple /dev/stdin %s /dev/stdout %s" % (LIFTOVER, minMatch, annots["LIFTOVER"][i], unmappedPath)
 
 	cmd += " > %s" % liftOverPath
-	
 
 	null = open("/dev/null", 'w')
 	proc = subprocess.check_call([cmd],shell=True, stdout=null, stderr=null)
@@ -360,7 +361,7 @@ def blastToOrtholog(lncs, annots, orth_annots, blastTo, n, alignments_dir, minMa
 	null = open("/dev/null", 'w')
 	for file in orth_annots[blastTo]:
 		numAligned = 0
-		cmd = "%s -i %s -g %s -b %d | %s -wa -wb -a /dev/stdin -b %s" % (SLOPBED, liftOverPath, orth_annots["GENOME_FA"][0]+".fai", pad, INTERSECTBED, file) 
+		cmd = "%s -i %s -g %s -b %d | grep -v random | %s -wa -wb -a /dev/stdin -b %s | cut -f4,6- | sort -u " % (SLOPBED, liftOverPath, orth_annots["GENOME_FA"][0]+".fai", pad, INTERSECTBED, file) 
 		try:
 			out = subprocess.check_output(cmd, stderr=null, shell=True)
 		except subprocess.CalledProcessError as e:
@@ -371,11 +372,11 @@ def blastToOrtholog(lncs, annots, orth_annots, blastTo, n, alignments_dir, minMa
 			numAligned += 1
 			if line.strip() == "": continue
 			line= line.split()
-			lnc = line[3].strip()
+			lnc = line[0].strip()
 			lncBed = lncs[lnc]
 			
-			overlapBed = line[5]
-			for i in range(6, len(line)):
+			overlapBed = line[1]
+			for i in range(2, len(line)):
 				overlapBed += "\t"+line[i]
 			lncFd, lncPath = tempfile.mkstemp()
 			lncFile = os.fdopen(lncFd, 'w')
@@ -404,7 +405,6 @@ def blastToOrtholog(lncs, annots, orth_annots, blastTo, n, alignments_dir, minMa
 
 			while True:
 				counter = 0
-				
 				for p in processes:
 					if p.is_alive(): 
 						counter += 1
@@ -414,7 +414,8 @@ def blastToOrtholog(lncs, annots, orth_annots, blastTo, n, alignments_dir, minMa
 					queue.put('STOP')
 					for item in iter(queue.get, 'STOP'):
 						if item == 0: FLUSHED += 1
-						else: FILTER.append(item)
+						else: 
+							FILTER.append(item)
 
 					#empty orf queue
 					orfQueue.put('STOP')
@@ -427,12 +428,13 @@ def blastToOrtholog(lncs, annots, orth_annots, blastTo, n, alignments_dir, minMa
 
 		print ""
 
-	null.close()	
+	null.close()
 	while FLUSHED < len(processes):
 		queue.put('STOP')
 		for item in iter(queue.get, 'STOP'):
 			if item == 0: FLUSHED += 1
-			else: FILTER.append(item)
+			else:
+				FILTER.append(item)
 
 	for p in processes:
 		p.join()
@@ -444,7 +446,6 @@ def blastToOrtholog(lncs, annots, orth_annots, blastTo, n, alignments_dir, minMa
 	os.remove(unmappedPath)
 
 	#newLncs, numRemoved = removeLncs(lncs, FILTER)
-
 	return FILTER, ORFS
 
 def readMaf(maf, FILTER):
@@ -676,7 +677,7 @@ def codingBlastFilter(coding_alignments_dir, coding_blast_min, minMatch, pad, ga
 
 		CODING_POSITIVES, NULL = blastToOrtholog(coding, ANNOTS, ORTH_ANNOTS, "CODING", threads, coding_positive_dir, minMatch, False, pad, gap_open, gap_extend, False, False)
 
-		if CODING_POSITIVES == 0:
+		if len(CODING_POSITIVES) == 0:
 			print "        WARNING: not enough transcripts to learn distribution.  setting min_coding_blast at .15"
 			cutoff=.15
 		
@@ -1133,7 +1134,6 @@ def main():
 	parser.add_argument('--lastz', type=str, help='path to lastz')
 	parser.add_argument('--gap_open', type=str, default='200')
 	parser.add_argument('--gap_extend', type=str, default='40')
-	parser.add_argument('--unmask', action='store_true')
 	parser.add_argument('--no_filter', action='store_true', help='flag if you don\'t want lncs to be filtered before searching for ortholog')
 	parser.add_argument('--no_orth_search', action='store_true', help='flag if you only want to filter lncs but don\'t want to search for orthologs')
 	parser.add_argument('--no_web', action='store_true', help='flag if you don\'t want website written visualizing transcripts that were filtered out')
@@ -1404,9 +1404,8 @@ def main():
 				annot = open(annot_file, 'r')
 				for line in annot:
 					noncodingBed[line.split()[3].strip()] = line
-
-			ORTHOLOGS, ORFS = blastToOrtholog(lncs, ANNOTS, ORTH_ANNOTS, "NONCODING", args.threads, alignments_dir, args.minMatch, True, args.pad, args.gap_open, args.gap_extend, True, True)
 			
+			ORTHOLOGS, ORFS = blastToOrtholog(lncs, ANNOTS, ORTH_ANNOTS, "NONCODING", args.threads, alignments_dir, args.minMatch, True, args.pad, args.gap_open, args.gap_extend, True, True)
 			print "      Found..."
 			tmpLncs, numRemoved = removeLncs(lncs, ORTHOLOGS)
 			print "\r              ... %d transcripts with noncoding ortholog!                                                                                 " % numRemoved
@@ -1414,8 +1413,8 @@ def main():
 			numSig = 0
 
 			for entry in ORFS:
-				entry = entry.split()
 				if entry[7].strip() != "inf" and float(entry[7]) < 1.0: numSig += 1
+				if entry[7].strip() == "inf": entry[7] = 9999
 			
 			print "              ... %d conserved small ORF with kN/kS < 1!\n" % numSig
 
@@ -1425,8 +1424,7 @@ def main():
 			
 			#get gene symbol
 			geneSymbol(ogLncs, ORTHOLOGS, ANNOTS, ORTH_ANNOTS)	
-		
-			ORTHOLOGS.sort()
+			ORTHOLOGS.sort(key = lambda x: (x[0], x[1], x[2], x[3]), reverse=True)
 			#FILTER TOP ORTHOLOGS
 			lncToOrtholog = {}
 			for entry in ORTHOLOGS:
@@ -1439,11 +1437,11 @@ def main():
 			orthologs = open(args.out_prefix+".orthologs.txt", 'w')
 			orthologs_top = open(args.out_prefix+".orthologs.top.txt", 'w')
 
-			orthologs.write("#lnc\tlncGeneSymbol\tortholog\torthologGeneSymbol\texonID\tseqID\tcategory(annotation)\n")
-			orthologs_top.write("#lnc\tlncGeneSymbol\tortholog\torthologGeneSymbol\texonID\tseqID\tcategory(annotation)\n")
-		
+			orthologs.write("#lnc\tlncGeneSymbol\tortholog\torthologGeneSymbol\talignNo\texonID\tseqID\tindelRate\tlncExonsAligned\torthExonsAligned\tcategory(by_annotation)\n")
+			orthologs_top.write("#lnc\tlncGeneSymbol\tortholog\torthologGeneSymbol\talignNo\texonID\tseqID\tindelRate\tlncExonsAligned\torthExonsAligned\tcategory(by_annotation)\n")
+			
 			for entry in ORTHOLOGS:
-				orthologs.write("%s\t%s\t%s\t%s\t%.2f\t%.2f\t%s\n" % (entry[0], entry[5], entry[1], entry[6], entry[2], entry[3], entry[4]))
+				orthologs.write("%s\t%s\t%s\t%s\t%s\t%.2f\t%.2f\t%.2f\t%s\t%s\t%s\n" % (entry[0], entry[9], entry[1], entry[10], entry[7], entry[2], entry[3], entry[4], entry[5], entry[6], entry[8]))
 		
 			for lnc,entry in lncToOrtholog.iteritems():
 				orth = entry[1]
@@ -1452,7 +1450,7 @@ def main():
 				
 				lncBed.write(lncBedEntry)
 				orthBed.write(orthBedEntry)
-				orthologs_top.write("%s\t%s\t%s\t%s\t%.2f\t%.2f\t%s\n" % (entry[0], entry[5], entry[1], entry[6], entry[2], entry[3], entry[4]))
+				orthologs_top.write("%s\t%s\t%s\t%s\t%s\t%.2f\t%.2f\t%.2f\t%s\t%s\t%s\n" % (entry[0], entry[9], entry[1], entry[10], entry[7], entry[2], entry[3], entry[4], entry[5], entry[6], entry[8]))
 			lncBed.close()
 			orthBed.close()
 		
@@ -1463,8 +1461,16 @@ def main():
 			subprocess.check_call(cmd)
 			
 			if len(ORFS) > 0:
+				ORFS.sort(key = lambda x: float(x[7]))
 				orf_file = open(args.out_prefix+".orfs.txt", 'w')
-				for entry in ORFS: orf_file.write(entry)
+				for entry in ORFS: 
+					orf_file.write(entry[0].strip())
+					for i in range(1,len(entry)):
+						if i == 7 and entry[i] == 9999:
+							orf_file.write("\tinf")
+						else:
+							orf_file.write("\t%s" % entry[i].strip())
+					orf_file.write("\n")
 				orf_file.close()
 		else:
 			print "Not enough information to search for orthologs! Please check you have genome fastas for both species, a liftOver file, and an ortholog noncoding file specificied in your annotations.config"
