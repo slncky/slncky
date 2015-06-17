@@ -705,10 +705,13 @@ def main():
 		for line in mafHeader:
 			mafout.write(line+"\n")
 		
-		
+
 		alignment.write("#alignmentID\talignmentScore\tgeneA\tgeneB\texonID_A\tgeneID_A\texonID_B\tgeneID_B\tindelRate\texonsAlignedA\texonsAlignedB\n")
 		counter = -1
 		
+
+		for i in range(len(alignments)):
+			alignments[i].append(mafs[i])
 		alignments.sort(key = lambda x: (x[9], x[10]), reverse=True)
 		for a in alignments:
 			counter += 1
@@ -722,8 +725,12 @@ def main():
 				for exon in a[9]:
 					alignment.write("%d," % exon)
 				alignment.write("\n")
-				
-				mafout.write(mafs[counter])
+				if (float(a[4] > 0.00)):
+					#print a[1:10]
+					#print a[11]
+					#print mafs[counter]
+					#mafout.write(mafs[counter])
+					mafout.write(a[11])
 		alignment.close()
 
 if __name__ == "__main__":
