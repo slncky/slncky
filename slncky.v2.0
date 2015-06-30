@@ -695,10 +695,11 @@ def codingBlastFilter(coding_alignments_dir, coding_blast_min, minMatch, pad, ga
 					entry = codingToMax[item[0]]
 					if item[2] > entry[2]:
 						codingToMax[item[0]] = item
-				else:
+				elif item[2] > 0.00:
 					codingToMax[item[0]] = item
 			for item,entry in codingToMax.iteritems(): CODING_POSITIVES_MAX.append(entry)
 			CODING_POSITIVES_MAX.sort(key=lambda x: x[2])
+			print CODING_POSITIVES_MAX
 			cutoff = CODING_POSITIVES_MAX[int(len(CODING_POSITIVES_MAX) * 0.05)][2]
 			print "\n        setting cutoff for positive coding alignment at exonic id = %.3f" % cutoff
 	
@@ -746,7 +747,7 @@ def writeOverlappingTranscripts(TEMPLATE_PATH, assembly, out, minOverlap, ogLncs
 			html.write(line)
 
 		elif line.startswith("CUSTOM"):
-			line = line.replace("CUSTOM_PATH", pre+out+".overlap.bed")
+			line = line.replace("CUSTOM_PATH", pre+"overlap.bed")
 			line = line.replace("CUSTOM", "")
 			html.write(line)
 		elif line.startswith("OPTIONS"):
@@ -810,7 +811,7 @@ def writeJson(out, sets, pairsToId):
 	lncToNum = {}
 	#write json
 
-	json = open(pre+out+".duplications.json", 'w')
+	json = open(pre+"duplications.json", 'w')
 	json.write("{\"nodes\": [")
 	
 	counter = -1
@@ -874,7 +875,7 @@ def writeDuplications(TEMPLATE_PATH, out, SELF_BLAST_FILTER):
 			line = line.replace("NUM_FILTERED", str(len(lncs)))
 			line = line.replace("FILTERED", "")
 		elif line.startswith("JSON"):
-			line = line.replace("JSON_FILE", out+".duplications.json")
+			line = line.replace("JSON_FILE", "duplications.json")
 			line = line.replace("JSON", "")
 
 		html.write(line)	
@@ -1238,9 +1239,10 @@ def main():
 			subprocess.check_call(cmd)
 			
 			#make ucsc track
-			ucsc = open(pre+args.out_prefix+".overlap.bed", 'w')
-			ucscSet = set()
-			ucsc.write("track name=overlapping transcripts type=bed visibility=2\n")
+			if not args.no_filter:
+				ucsc = open(pre+"overlap.bed", 'w')
+				ucscSet = set()
+				ucsc.write("track name=overlapping transcripts type=bed visibility=2\n")
 
 		##REMOVE TRANSCRIPTS THAT INTERSECT WITH CODING GENES##
 		print "\nSTEP I. FILTER LNCS"
