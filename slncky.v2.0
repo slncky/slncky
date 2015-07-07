@@ -179,8 +179,9 @@ def removeOverlap(lncs, annots, args, min):
 	cmdPre = INTERSECTBED
 	for arg in args:
 		cmdPre += " "+arg
+	
+	pairToOverlap = {}
 	for file in annots:
-		pairToOverlap = {}
 		cmd = cmdPre+" -wao -a %s -b %s" % (lncExonPath, file)
 		#intersect and get overlap
 		
@@ -202,15 +203,24 @@ def removeOverlap(lncs, annots, args, min):
 			else:
 				pairToOverlap[pair] = overlap
 	
-		#REMOVE
-		for pair, overlap in pairToOverlap.iteritems():
-			pair = pair.split("&")
-			lnc = pair[0]
-			gene = pair[1]
-			overlap = overlap*1.0 / lncSize[lnc]
-			if overlap > min:
-				FILTER.append([lnc, gene, overlap, file])
+	#filter top
+	lncToMax = {}
+		
+	for pair, overlap in pairToOverlap.iteritems():
+		pair = pair.split("&")
+		lnc = pair[0]
+		gene = pair[1]
+		overlap = overlap*1.0 / lncSize[lnc]
+		if overlap > min:
+			if lnc in lncToMax:
+				arr = lncToMax[lnc]
+				if overlap > arr[2]:
+					lncToMax[lnc] = [lnc, gene, overlap, file]
+			else:
+				lncToMax[lnc] = [lnc, gene, overlap, file]
 
+	for lnc, entry in lncToMax.iteritems():
+		FILTER.append(entry)
 	
 	os.remove(lncExonPath)	
 
@@ -293,7 +303,7 @@ def alignTranscripts(lncPath, fa, orthPath, orthFa, tmpPath, FILTER, null, keep,
 			if line.strip() == "": continue
 			line = line.split()
 			if len(line)>1 and line[4].strip() != "exonID_A":
-				alignNo = line[0]
+				alignScore = line[1]
 				geneA = line[2]
 				geneB = line[3]
 				exonID = float(line[4])
@@ -304,7 +314,7 @@ def alignTranscripts(lncPath, fa, orthPath, orthFa, tmpPath, FILTER, null, keep,
 				if len(line) > 9:
 					exonsAlignedA = line[9]	
 					exonsAlignedB = line[10]
-				FILTER.put([geneA, geneB, exonID, seqID, indelRate, exonsAlignedA, exonsAlignedB, alignNo])
+				FILTER.put([geneA, geneB, exonID, seqID, indelRate, exonsAlignedA, exonsAlignedB, alignScore])
 		
 		if os.path.exists(tmpPath+".alignment_identity.txt"): 
 			os.remove(tmpPath+".alignment_identity.txt")
@@ -352,7 +362,6 @@ def blastToOrtholog(lncs, annots, orth_annots, blastTo, n, alignments_dir, minMa
 			cmd += " | %s -minMatch=%.3f -multiple /dev/stdin %s /dev/stdout %s" % (LIFTOVER, minMatch, annots["LIFTOVER"][i], unmappedPath)
 
 	cmd += " > %s" % liftOverPath
-	#print cmd
 
 	null = open("/dev/null", 'w')
 	proc = subprocess.check_call([cmd],shell=True, stdout=null, stderr=null)
@@ -365,9 +374,8 @@ def blastToOrtholog(lncs, annots, orth_annots, blastTo, n, alignments_dir, minMa
 	null = open("/dev/null", 'w')
 	for file in orth_annots[blastTo]:
 		numAligned = 0
-		if multiple: cmd = "%s -i %s -g %s -b %d | grep -v random | %s -wa -wb -a /dev/stdin -b %s | cut -f4,6- | sort -u " % (SLOPBED, liftOverPath, orth_annots["GENOME_FA"][0]+".fai", pad, INTERSECTBED, file) 
-		else: cmd = "%s -i %s -g %s -b %d | grep -v random | %s -wa -wb -a /dev/stdin -b %s | cut -f4- | sort -u " % (SLOPBED, liftOverPath, orth_annots["GENOME_FA"][0]+".fai", pad, INTERSECTBED, file)
-		#print cmd
+		if multiple: cmd = "%s -i %s -g %s -b %d | egrep -v \"random|chrUn\" | %s -wa -wb -a /dev/stdin -b %s | cut -f4,6- | sort -u " % (SLOPBED, liftOverPath, orth_annots["GENOME_FA"][0]+".fai", pad, INTERSECTBED, file) 
+		else: cmd = "%s -i %s -g %s -b %d | egrep -v \"random|chrUn\" | %s -wa -wb -a /dev/stdin -b %s | cut -f4- | sort -u " % (SLOPBED, liftOverPath, orth_annots["GENOME_FA"][0]+".fai", pad, INTERSECTBED, file)
 		try:
 			out = subprocess.check_output(cmd, stderr=null, shell=True)
 		except subprocess.CalledProcessError as e:
@@ -486,6 +494,7 @@ def readMaf(maf, FILTER):
 
 def selfBlastOneLnc(curLnc, lncs, FILTER, tmpPath):
 	cmd = [LASTZ, curLnc, lncs, '--strand=plus', '--format=maf+', '--output=%s' % tmpPath]
+
 	subprocess.call(cmd)
 	file = open(tmpPath, 'r')
 	out = file.readlines()
@@ -497,7 +506,7 @@ def selfBlastOneLnc(curLnc, lncs, FILTER, tmpPath):
 
 	FILTER.put(0)
 
-def selfBlast(lncs, annots, shuffle, n):
+def selfBlast(lncs, annots, file, n):
 	queue = Queue()
 
 	processes = []
@@ -509,7 +518,7 @@ def selfBlast(lncs, annots, shuffle, n):
 	
 	#make query fasta
 	
-	if shuffle:
+	if file == "shuffle":
 		#if number of lncs very large, just take subset for null distribution to save time
 		if len(lncs) > 50:
 			allLncList = []
@@ -524,7 +533,7 @@ def selfBlast(lncs, annots, shuffle, n):
 		else:
 			lncFile = writeToTmp(lncs)
 		
-		queryLncFaPath = lncFile+".query.fa"
+		queryLncFaPath = [lncFile+".query.fa"]
 		shuffleLncPath = lncFile+".shuffle.bed"
 		shuffleLncBed = open(shuffleLncPath, 'w')
 		
@@ -534,16 +543,18 @@ def selfBlast(lncs, annots, shuffle, n):
 			out = subprocess.check_output(cmd)
 			shuffleLncBed.write(out)
 		shuffleLncBed.close()
-		cmd = [FASTAFROMBED, '-s', '-fi', annots["GENOME_FA"][0], '-bed', shuffleLncPath, '-fo', queryLncFaPath, '-split', '-name']
+		cmd = [FASTAFROMBED, '-s', '-fi', annots["GENOME_FA"][0], '-bed', shuffleLncPath, '-fo', queryLncFaPath[0], '-split', '-name']
 		subprocess.call(cmd)
 		cmd = ['rm', shuffleLncPath]
-	else:
+	elif file == "self":
 		lncFile = writeToTmp(lncs)
-		queryLncFaPath = lncFile+".query.fa"
-		cmd = [FASTAFROMBED, '-s', '-fi', annots["GENOME_FA"][0], '-bed', lncFile, '-fo', queryLncFaPath, '-split', '-name']
+		queryLncFaPath = [lncFile+".query.fa"]
+		cmd = [FASTAFROMBED, '-s', '-fi', annots["GENOME_FA"][0], '-bed', lncFile, '-fo', queryLncFaPath[0], '-split', '-name']
 		subprocess.call(cmd)
-
-	subprocess.call(cmd)
+	else:
+		queryLncFaPath = annots[file]
+		
+		
 
 	for lnc, entry in lncs.iteritems():
 		numAligned += 1
@@ -551,18 +562,19 @@ def selfBlast(lncs, annots, shuffle, n):
 		#make target fasta
 		curLnc = {}
 		curLnc[lnc] = entry
-		curLncFile = writeToTmp(curLnc)
-		curLncFaPath = curLncFile+".fa"
+		for query in queryLncFaPath:
+			curLncFile = writeToTmp(curLnc)
+			curLncFaPath = curLncFile+".fa"
 		
-		cmd = [FASTAFROMBED, '-s', '-fi', annots["GENOME_FA"][0], '-bed', curLncFile, '-fo', curLncFaPath, '-split', '-name']
-		subprocess.check_call(cmd)
-		os.remove(curLncFile)
+			cmd = [FASTAFROMBED, '-s', '-fi', annots["GENOME_FA"][0], '-bed', curLncFile, '-fo', curLncFaPath, '-split', '-name']
+			subprocess.check_call(cmd)
+			os.remove(curLncFile)
 		
-		mafBedPath = curLncFile+".maf"
+			mafBedPath = curLncFile+".maf"
 		
-		p = Process(target=selfBlastOneLnc, args=(curLncFaPath, queryLncFaPath, queue, mafBedPath))
-		p.start()
-		processes.append(p)
+			p = Process(target=selfBlastOneLnc, args=(curLncFaPath, query, queue, mafBedPath))
+			p.start()
+			processes.append(p)
 		
 		print "\r             self-blasting %d / %d genes" % (numAligned, len(lncs)),
 		sys.stdout.flush()
@@ -587,17 +599,16 @@ def selfBlast(lncs, annots, shuffle, n):
 
 	for p in processes:
 		p.join()
-
-	cmd = ['rm', queryLncFaPath]
-	subprocess.call(cmd)
+	
+	if file == "shuffle" or file == "self":
+		cmd = ['rm', queryLncFaPath[0]]
+		subprocess.call(cmd)
 
 	return FILTER
 
-def selfBlastFilter(lncs, ANNOTS, threads, min):
-	
+def selfBlastShuffle(lncs, ANNOTS, threads):
 	lncToScores = {}
-	
-	selfBlastShuffleResults = selfBlast(lncs, ANNOTS, True, threads)
+	selfBlastShuffleResults = selfBlast(lncs, ANNOTS, "shuffle", threads)
 	for item in selfBlastShuffleResults:
 		if item[0] in lncToScores:
 			arr = lncToScores[item[0]]
@@ -609,19 +620,25 @@ def selfBlastFilter(lncs, ANNOTS, threads, min):
 
 	#sort
 	for item, arr in lncToScores.iteritems():
-		for i in range(200-len(arr)):
-			arr.append(0)
-		arr.sort(reverse=True)
+		arr.sort()
 		lncToScores[item] = arr
 
+	return lncToScores
+
+def selfBlastFilter(lncs, lncToScores, ANNOTS, threads, min):
+	
 	print "\n\n        aligning transcripts to each other..."	
-	selfBlastResults = selfBlast(lncs, ANNOTS, False, threads)
+	selfBlastResults = selfBlast(lncs, ANNOTS, "self", threads)
 	selfBlastSets = []
 	selfBlastSig = []
 	for item in selfBlastResults:
 		if item[0].strip() == item[1].strip(): continue
-		if (item[0] in lncToScores and item[4] >= lncToScores[item[0]][4]) or item[0] not in lncToScores:
-			if (item[1] in lncToScores and item[4] >= lncToScores[item[1]][4]) or item[1] not in lncToScores:
+
+		if item[0] in lncToScores: arrA = lncToScores[item[0]]
+		if item[1] in lncToScores: arrB = lncToScores[item[1]]
+
+		if (item[0] in lncToScores and item[4] >= arrA[int(len(arrA)*0.05)]) or item[0] not in lncToScores:
+			if (item[1] in lncToScores and item[4] >= arrB[int(len(arrB)*0.04)]) or item[1] not in lncToScores:
 
 				selfBlastSig.append(item)
 				newSet = set()
@@ -646,6 +663,32 @@ def selfBlastFilter(lncs, ANNOTS, threads, min):
 	newLncs, numRemoved = removeLncs(lncs, FILTER)
 
 	return newLncs, FILTER, finalClusters
+
+def dupFilter(lncs, lncToScores, ANNOTS, threads):
+	
+	print "\n\n        aligning transcripts to annotated duplications..."	
+	selfBlastResults = selfBlast(lncs, ANNOTS, "DUPS", threads)
+	
+	lncToMax = {}
+	
+	for item in selfBlastResults:
+		lnc = item[0]
+		if lnc in lncToScores: arr = lncToScores[lnc]
+
+		if (lnc in lncToScores and item[4] >= arr[int(len(arr)*0.05)]) or lnc not in lncToScores:
+			if lnc in lncToMax:
+				if item[4] > lncToMax[lnc]:
+					lncToMax[lnc] = item
+			else:
+				lncToMax[lnc] = item
+
+	SET = set()
+	FILTER = []
+	for lnc, item in lncToMax.iteritems():
+		FILTER.append(item)
+		SET.add(lnc)
+	return FILTER, SET
+
 
 def codingBlastFilter(coding_alignments_dir, coding_blast_min, minMatch, pad, gap_open, gap_extend, SENSE_FILTER, ogLncs, lncs, ANNOTS, ORTH_ANNOTS, threads):
 	#make directory for coding
@@ -699,7 +742,6 @@ def codingBlastFilter(coding_alignments_dir, coding_blast_min, minMatch, pad, ga
 					codingToMax[item[0]] = item
 			for item,entry in codingToMax.iteritems(): CODING_POSITIVES_MAX.append(entry)
 			CODING_POSITIVES_MAX.sort(key=lambda x: x[2])
-			print CODING_POSITIVES_MAX
 			cutoff = CODING_POSITIVES_MAX[int(len(CODING_POSITIVES_MAX) * 0.05)][2]
 			print "\n        setting cutoff for positive coding alignment at exonic id = %.3f" % cutoff
 	
@@ -1003,75 +1045,62 @@ def writeNoOrthSearch(out):
 	cmd = ['mv', pre+"tmp", pre+"index.html"]
 	subprocess.call(cmd)
 
-def categorizeLncsByAnnots(lncs, ORTHOLOGS, ANNOTS):
+def categorizeLncsByAnnots(lncs, ANNOTS):
 	if "MIRNA" not in ANNOTS or "SNORNA" not in ANNOTS:
 		print "WARNING!: miRNA and snoRNA annotations not found for lnc categorization"
 	if "CODING" not in ANNOTS:
 		print "WARNING!: coding annotations not found for lnc categorization"
 	lncToCategory = {}
-	for entry in ORTHOLOGS:
+	for lnc, line in lncs.iteritems():
 		category = ""
-		lnc = entry[0].strip()
-		if lnc in lncToCategory:
-			category = lncToCategory[lnc]
-		else:
-			if lnc in lncs: curLncFile = writeToTmp({lnc: lncs[lnc]})
-			else: print lnc+" IS MISSING!"
-			#check if snorna host
-			if "SNORNA" in ANNOTS:
-				cmd =[INTERSECTBED, '-a', curLncFile, '-b', ANNOTS["SNORNA"][0]]
+		curLncFile = writeToTmp({lnc: lncs[lnc]})
+	
+		#check if snorna host
+		if "SNORNA" in ANNOTS:
+			cmd =[INTERSECTBED, '-a', curLncFile, '-b', ANNOTS["SNORNA"][0]]
+			out = subprocess.check_output(cmd)
+			if out.strip() != "":
+				category = "sno_host"
+		#check if mirna host
+		if category == "" and  "MIRNA" in ANNOTS:
+			cmd =[INTERSECTBED, '-a', curLncFile, '-b', ANNOTS["MIRNA"][0]]
+			out = subprocess.check_output(cmd)
+			if out != "":
+				category = "mir_host"
+		#check if divergent
+		if category == "" and "CODING" in ANNOTS:
+			for file in ANNOTS["CODING"]:
+				if category != "": break
+				cmd = [CLOSESTBED, '-id', '-D', 'a', '-S', '-a', curLncFile, '-b', file]
 				out = subprocess.check_output(cmd)
-				if out.strip() != "":
-					category = "sno_host"
-					lncToCategory[lnc] = "sno_host"
-			#check if mirna host
-			if category == "" and  "MIRNA" in ANNOTS:
-				cmd =[INTERSECTBED, '-a', curLncFile, '-b', ANNOTS["MIRNA"][0]]
-				out = subprocess.check_output(cmd)
-				if out != "":
-					category = "mir_host"
-					lncToCategory[lnc] = "mir_host"
-			#check if divergent
-			if category == "" and "CODING" in ANNOTS:
-				for file in ANNOTS["CODING"]:
+				out = out.split("\n")
+				for line in out:
+					if line.strip() == "": break
 					if category != "": break
-					cmd = [CLOSESTBED, '-id', '-D', 'a', '-S', '-a', curLncFile, '-b', file]
-					out = subprocess.check_output(cmd)
-					out = out.split("\n")
-					for line in out:
-						if line.strip() == "": break
-						if category != "": break
-						line = line.split("\t")
-						if line[5] == "+":
-							lncTSS = int(line[1])
-						else:
-							lncTSS = int(line[2])
-						if line[17] == "+":
-							codingTSS = int(line[13])
-						else:
-							codingTSS = int(line[14])
-						if abs(lncTSS - codingTSS) <=500:
-							category = "divergent"
-							lncToCategory[lnc] = "divergent"
-			#if none of above and exonId > 10%: intergenic
-			if category == "":
-				maxExonId = float(entry[2])
-				for x in ORTHOLOGS:
-					if x[0] == lnc and float(x[2]) > maxExonId: maxExonId = float(x[2])
-				
-				if maxExonId >= 0.1: category = "intergenic"
-				else: category = "intergenic (bad alignment/syntolog)"
-				lncToCategory[lnc] = category
+					line = line.split("\t")
+					if line[5] == "+":
+						lncTSS = int(line[1])
+					else:
+						lncTSS = int(line[2])
+					if line[17] == "+":
+						codingTSS = int(line[13])
+					else:
+						codingTSS = int(line[14])
+					if abs(lncTSS - codingTSS) <=500:
+						category = "divergent"
+		if category == "":
+			category = "intergenic"
+		lncToCategory[lnc] = category
 
-			#cleanup
-			cmd = ['rm', curLncFile]
-			subprocess.call(cmd)
-		entry.append(category)
+		#cleanup
+		cmd = ['rm', curLncFile]
+		subprocess.call(cmd)
+	
+	return lncToCategory
 
-def geneSymbol(ogLncs, ORTHOLOGS, ANNOTS, ORTH_ANNOTS):
+def geneSymbol(lncs, ANNOTS):
 	lncToGeneSymbol = {}
 	GeneSymbol = {}
-	OrthGeneSymbol = {}
 
 	if "GENESYMBOL" in ANNOTS:
 	#load gene symbol file into dict
@@ -1079,23 +1108,11 @@ def geneSymbol(ogLncs, ORTHOLOGS, ANNOTS, ORTH_ANNOTS):
 		for line in genesymbol:
 			line = line.split()
 			GeneSymbol[line[0].strip()] = line[1].strip()
-
-	if "GENESYMBOL" in ORTH_ANNOTS:
-	#load gene symbol file into dict
-		genesymbol = open(ORTH_ANNOTS["GENESYMBOL"][0], 'r').readlines()
-		for line in genesymbol:
-			line = line.split()
-			OrthGeneSymbol[line[0].strip()] = line[1].strip()
-
-	for entry in ORTHOLOGS:
+	
+	for lnc in lncs:
 		lncGeneSymbol = "Unannotated"
-		orthGeneSymbol = "Unannotated"	
-
-		lnc = entry[0]
-		if lnc in lncToGeneSymbol:
-			lncGeneSymbol = lncToGeneSymbol[lnc]
-		elif "GENESYMBOL" in ANNOTS:
-			curLncFile = writeToTmp({lnc: ogLncs[lnc]})
+		if "GENESYMBOL" in ANNOTS and "NONCODING" in ANNOTS:
+			curLncFile = writeToTmp({lnc: lncs[lnc]})
 			maxOverlap = 0
 			#for every noncoding file
 			for file in ANNOTS["NONCODING"]:
@@ -1111,25 +1128,22 @@ def geneSymbol(ogLncs, ORTHOLOGS, ANNOTS, ORTH_ANNOTS):
 					if overlap > maxOverlap and line[15].strip() in GeneSymbol:
 						lncGeneSymbol = GeneSymbol[line[15].strip()]
 						maxOverlap = overlap
+			lncToGeneSymbol[lnc] = lncGeneSymbol
+		
+	return lncToGeneSymbol
 
-		ortholog = entry[1]
-		if ortholog in OrthGeneSymbol:
-			orthGeneSymbol = OrthGeneSymbol[ortholog]
-
-		entry.append(lncGeneSymbol)
-		entry.append(orthGeneSymbol)
 
 def main():
 	parser = argparse.ArgumentParser(description='Filter transcripts for bona fide lncRNAs and searches for orthologs')
 	parser.add_argument('bedfile', type=str, help='bed12 file of transcripts')
 	parser.add_argument('assembly', type=str, help='assembly')
 	parser.add_argument('out_prefix', type=str, help='out_prefix')
-	parser.add_argument('--overwrite', '-ow', action='store_true', help='forces overwrite of out_prefix.bed')
+	parser.add_argument('--overwrite', '-o', action='store_true', help='forces overwrite of out_prefix.bed')
 	parser.add_argument('--config', '-c', type=str, help='path to assembly.config file. default uses config file in same directory as slncky')
 	parser.add_argument('--min_overlap', '-mo', type=float, help='remove any transcript that overlap annotated coding gene > min_overlap%%. default = 0%%', default=0)
 	parser.add_argument('--min_cluster_size', '-mcs', type=int, help='min size of duplication clusters to remove. default=2', default=2)
 	parser.add_argument('--min_coding_blast', '-mcb', type=float, help='min exonic identity to filter out transcript that blasts to orthologous coding gene. default is set by learning coding alignment distribution from data', default=None)
-	parser.add_argument('--no_selfblast', action='store_true', help='flag if you don\'t want to selfblast for duplicates')
+	parser.add_argument('--no_self_blast', action='store_true', help='flag if you don\'t want to selfblast for duplicates')
 	parser.add_argument('--no_coding_blast', action='store_true', help='flag if you don\'t want to blast to orthologous coding')
 	parser.add_argument('--noncoding_blast_min', type=float, help='min exonic identity to filter out transcript that blasts to orthologous noncoding gene. default=0', default=0.0)
 	parser.add_argument('--threads', '-n', type=int, help='number of threads. default = 5', default=5)
@@ -1140,8 +1154,8 @@ def main():
 	parser.add_argument('--lastz', type=str, help='path to lastz')
 	parser.add_argument('--gap_open', type=str, default='200')
 	parser.add_argument('--gap_extend', type=str, default='40')
-	parser.add_argument('--no_filter', action='store_true', help='flag if you don\'t want lncs to be filtered before searching for ortholog')
-	parser.add_argument('--no_orth_search', action='store_true', help='flag if you only want to filter lncs but don\'t want to search for orthologs')
+	parser.add_argument('--no_filter', '-2', action='store_true', help='flag if you don\'t want lncs to be filtered before searching for ortholog')
+	parser.add_argument('--no_orth_search', '-1', action='store_true', help='flag if you only want to filter lncs but don\'t want to search for orthologs')
 	parser.add_argument('--no_web', action='store_true', help='flag if you don\'t want website written visualizing transcripts that were filtered out')
 	args = parser.parse_args()
 	
@@ -1223,6 +1237,7 @@ def main():
 		OVERLAP_FILTER = []
 		WITHIN_FILTER = []
 		CODING_BLAST_FILTER = []
+		DUP_FILTER = []
 		SELF_BLAST_FILTER = []
 		
 		#INITIALIZE FILTER INFO FILE
@@ -1302,17 +1317,35 @@ def main():
 				canonInfo.write("\n")
 			canonInfo.close()
 
-		
+		##ALIGN TO DUPLICATIONS##
+		if "GENOME_FA" in ANNOTS and len(lncs) > 0 and "DUPS" in ANNOTS:
+			print"\nSearching for gene duplications by aligning to commonly duplicated coding genes..."
+			
+			print "        learning null distribution of alignment scores"
+			lncShuffleScores = selfBlastShuffle(lncs, ANNOTS, args.threads)
+			DUP_FILTER, DUP_SET = dupFilter(lncs, lncShuffleScores, ANNOTS, args.threads)
+			print "\n        %d lncs found that align to commonly duplicated coding gene!" % len(DUP_FILTER)
+			
+			#write self_blast info
+			for x in DUP_FILTER:
+				filtered.write("%s\tblasts to %s with %0.1f%% identity and %0.1f%% coverage. Appears to be duplication.\n" % (x[0], x[1], float(x[2]), float(x[3])))
+
 		##SELF-BLAST TO FIND DUPLICATIONS##
-		if "GENOME_FA" in ANNOTS and not args.no_selfblast and len(lncs)>0:
-			print "\nSearching for gene duplications..."
+		if "GENOME_FA" in ANNOTS and not args.no_self_blast and len(lncs)>0:
+			print "\nSearching for gene duplications by aligning lncs to each other..."
 			print "        min_cluster_size: %d" % args.min_cluster_size
 			if len(lncs) < 100:
 				print "        WARNING: too few lncs to accurately find duplications.  consider setting the --no_selfblast flag to save time."
-			print "        learning null distribution of alignment scores"
 
-			lncs, SELF_BLAST_FILTER, finalClusters = selfBlastFilter(lncs, ANNOTS, args.threads, args.min_cluster_size)
+			if "DUPS" not in ANNOTS:
+				print "        learning null distribution of alignment scores"
+				lncShuffleScores = selfBlastShuffle(lncs, ANNOTS, args.threads)
+			else:
+				print "        reusing null distribution from previous step"
 
+			lncs, SELF_BLAST_FILTER, finalClusters = selfBlastFilter(lncs, lncShuffleScores, ANNOTS, args.threads, args.min_cluster_size)
+			
+			
 			if len(finalClusters)> 0:
 				print "\n\n        Removing..."
 				for cluster in finalClusters:
@@ -1326,14 +1359,29 @@ def main():
 			
 			if len(finalClusters) > 0:
 				clusters = open(args.out_prefix+".cluster_info.txt", 'w')
-				clusters.write("#clusterSize\ttranscripts\n")
+				clusters.write("#clusterSize\talignToCodingDup?\ttranscripts\n")
 				for curCluster in finalClusters:
 					clusters.write("%d\t" % len(curCluster))
+
+					if "DUPS" not in ANNOTS:
+						clusters.write("NA\t")
+					else:
+						alignToDup = False
+						for curGene in curCluster:
+							if curGene in DUP_SET:
+								alignToDup = True
+						if alignToDup: clusters.write("Y\t")
+						else: clusters.write("N\t")
+
 					for curGene in curCluster:
 						clusters.write("%s," % curGene)
 					clusters.write("\n")
 				clusters.close()
 
+		#now remove lncs that align to duplicated coding gene
+		if len(DUP_FILTER) > 0 and len(lncs) > 0:
+			newLncs, numRemoved = removeLncs(lncs, DUP_FILTER)
+			lncs = newLncs
 		
 		##BLAST TO CODING ORTHOLOGS##
 
@@ -1376,22 +1424,35 @@ def main():
 			cmd = ['rm', '-rf', coding_alignments_dir]
 			subprocess.check_call(cmd)
 			
+		#categorize orthologs by annotation
+		lncToCategory = categorizeLncsByAnnots(lncs, ANNOTS)
+		#get gene symbol
+		lncToGeneSymbol = geneSymbol(lncs, ANNOTS)	
+		
+		
+		
 		#WRITE FILTERED DATA
 		
 		print "\nWriting final lncs file."
-		
 		finalLncs = open(args.out_prefix+".lncs.bed", 'w')
+		finalLncsInfo = open(args.out_prefix+".lncs.info.txt", 'w')
 		for lnc, line in lncs.iteritems():
 			finalLncs.write(line)
+			finalLncsInfo.write("%s\t%s\t%s\n" % (lnc, lncToGeneSymbol[lnc], lncToCategory[lnc]))
 		finalLncs.close()
-
-		
+		finalLncsInfo.close()
 
 	#ORTH SEARCH
 	if not args.no_orth_search:
 		print "\n\nSTEP II. FIND LNC ORTHOLOGS\n"
 		print "Searching for orthologs..."
 		
+		if args.no_filter:
+			#categorize orthologs by annotation
+			lncToCategory = categorizeLncsByAnnots(lncs, ANNOTS)
+			#get gene symbol
+			lncToGeneSymbol = geneSymbol(lncs, ANNOTS)	
+	
 		alignments_dir = args.out_prefix+"_alignToNoncoding/"
 		if os.path.exists(alignments_dir):
 			print "        %s exists. overwriting..." % alignments_dir
@@ -1421,35 +1482,59 @@ def main():
 
 			for entry in ORFS:
 				if entry[7].strip() != "inf" and float(entry[7]) < 1.0: numSig += 1
-				if entry[7].strip() == "inf": entry[7] = 9999
 			
 			print "              ... %d conserved small ORF with kN/kS < 1!\n" % numSig
 
+			#MAKE ORTHOLOG DICT
+			orthologDict = {}
+			for entry in ORTHOLOGS:
+				if entry[1] not in orthologDict:
+					orthologDict[entry[1]] = ""
 
-			#categorize orthologs by annotation
-			categorizeLncsByAnnots(ogLncs, ORTHOLOGS, ANNOTS)
+			for file in ORTH_ANNOTS["NONCODING"]:
+				bed = open(file, 'r')
+				for line in bed.readlines():
+					splitline = line.split()
+					if splitline[3].strip() in orthologDict:
+						orthologDict[splitline[3].strip()] = line
+				bed.close()
 			
-			#get gene symbol
-			geneSymbol(ogLncs, ORTHOLOGS, ANNOTS, ORTH_ANNOTS)	
-			ORTHOLOGS.sort(key = lambda x: (x[0], x[1], x[2], x[3]), reverse=True)
+			orthToCategory = categorizeLncsByAnnots(orthologDict, ORTH_ANNOTS)
+			orthToGeneSymbol = geneSymbol(orthologDict, ORTH_ANNOTS)
+			
 			#FILTER TOP ORTHOLOGS
+			ORTHOLOGS.sort(key = lambda x: (x[0], x[1], x[2], x[3], x[7]), reverse=True)
+
 			lncToOrtholog = {}
 			for entry in ORTHOLOGS:
 				if entry[0] not in lncToOrtholog: lncToOrtholog[entry[0]] = entry
 				else:
 					curExonId = lncToOrtholog[entry[0]][2]
 					if entry[2] > curExonId: lncToOrtholog[entry[0]] = entry
-
+		
+			
 			#WRITE ORTHOLOGS
 			orthologs = open(args.out_prefix+".orthologs.txt", 'w')
 			orthologs_top = open(args.out_prefix+".orthologs.top.txt", 'w')
 
-			orthologs.write("#lnc\tlncGeneSymbol\tortholog\torthologGeneSymbol\talignNo\texonID\tlocusID\tindelRate\tlncExonsAligned\torthExonsAligned\tcategory(by_annotation)\n")
-			orthologs_top.write("#lnc\tlncGeneSymbol\tortholog\torthologGeneSymbol\talignNo\texonID\tlocusID\tindelRate\tlncExonsAligned\torthExonsAligned\tcategory(by_annotation)\n")
-			
-			for entry in ORTHOLOGS:
-				orthologs.write("%s\t%s\t%s\t%s\t%s\t%.2f\t%.2f\t%.2f\t%s\t%s\t%s\n" % (entry[0], entry[9], entry[1], entry[10], entry[7], entry[2], entry[3], entry[4], entry[5], entry[6], entry[8]))
+			orthologs.write("#lnc\tlncGeneSymbol\tortholog\torthologGeneSymbol\talignScore\texonID\tlocusID\tindelRate\tlncExonsAligned\torthExonsAligned\tcategory(%s)\tcategory(%s)\n" % (args.assembly, ANNOTS["ORTHOLOG"][0]))
+			orthologs_top.write("#lnc\tlncGeneSymbol\tortholog\torthologGeneSymbol\talignScore\texonID\tlocusID\tindelRate\tlncExonsAligned\torthExonsAligned\tcategory(%s)\tcategory(%s)\n" % (args.assembly, ANNOTS["ORTHOLOG"][0]))
 		
+			written = set()
+
+
+			for entry in ORTHOLOGS:
+				lnc = entry[0]
+				
+				#if locus ID is 0, only write top scoring 
+				if (entry[3] == 0.0 and lnc not in written):
+					orthologs.write("%s\t%s\t%s\t%s\t%s\t%.2f\t%.2f\t%.2f\t%s\t%s\t%s\t%s\n" % (entry[0], lncToGeneSymbol[entry[0]], entry[1], orthToGeneSymbol[entry[1]], entry[7], entry[2], entry[3], entry[4], entry[5], entry[6], lncToCategory[entry[0]], orthToCategory[entry[1]]))
+					written.add(lnc)
+				elif (entry[3] != 0.0): 
+					if ((lncToOrtholog[lnc][2] > 0.0 and entry[2] > 0.0 ) or (lncToOrtholog[lnc][2] == 0.0)):
+						orthologs.write("%s\t%s\t%s\t%s\t%s\t%.2f\t%.2f\t%.2f\t%s\t%s\t%s\t%s\n" % (entry[0], lncToGeneSymbol[entry[0]], entry[1], orthToGeneSymbol[entry[1]], entry[7], entry[2], entry[3], entry[4], entry[5], entry[6], lncToCategory[entry[0]], orthToCategory[entry[1]]))
+						written.add(lnc)
+
 			for lnc,entry in lncToOrtholog.iteritems():
 				orth = entry[1]
 				lncBedEntry = ogLncs[lnc]
@@ -1457,10 +1542,10 @@ def main():
 				
 				lncBed.write(lncBedEntry)
 				orthBed.write(orthBedEntry)
-				orthologs_top.write("%s\t%s\t%s\t%s\t%s\t%.2f\t%.2f\t%.2f\t%s\t%s\t%s\n" % (entry[0], entry[9], entry[1], entry[10], entry[7], entry[2], entry[3], entry[4], entry[5], entry[6], entry[8]))
+				orthologs_top.write("%s\t%s\t%s\t%s\t%s\t%.2f\t%.2f\t%.2f\t%s\t%s\t%s\t%s\n" % (entry[0], lncToGeneSymbol[entry[0]], entry[1], orthToGeneSymbol[entry[1]], entry[7], entry[2], entry[3], entry[4], entry[5], entry[6], lncToCategory[entry[0]], orthToCategory[entry[1]]))
 			lncBed.close()
 			orthBed.close()
-		
+			
 			null = open("/dev/null", 'w')
 			cmd = ['tar', '-czvf', alignments_dir[0:-1]+".tar.gz", alignments_dir]
 			subprocess.check_call(cmd, stdout=null, stderr=null)
@@ -1470,15 +1555,9 @@ def main():
 			if len(ORFS) > 0:
 				ORFS.sort(key = lambda x: float(x[7]))
 				orf_file = open(args.out_prefix+".orfs.txt", 'w')
-				orf_file.write("alignNo\tlnc\tortholog\tlengthLncOrf\tlengthOrthOrf\tkN\tkS\tkN\kS\tlncOrf\torthOrf\n")
+				orf_file.write("lnc\tlncName\tortholog\torthologName\talignScore\tlengthLncOrf\tlengthOrthOrf\tkN\tkS\tkN\kS\tlncOrf\torthOrf\n")
 				for entry in ORFS: 
-					orf_file.write(entry[0].strip())
-					for i in range(1,len(entry)):
-						if i == 7 and entry[i] == 9999:
-							orf_file.write("\tinf")
-						else:
-							orf_file.write("\t%s" % entry[i].strip())
-					orf_file.write("\n")
+					orf_file.write("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (entry[1], lncToGeneSymbol[entry[1]], entry[2], orthToGeneSymbol[entry[2]], entry[0], entry[3], entry[4], entry[5], entry[6], entry[7], entry[8], entry[9]))
 				orf_file.close()
 		else:
 			print "Not enough information to search for orthologs! Please check you have genome fastas for both species, a liftOver file, and an ortholog noncoding file specificied in your annotations.config"
@@ -1488,7 +1567,7 @@ def main():
 
 	if not args.no_web: 
 		if not args.no_filter:
-			writeWebsite(ANNOTS, args.assembly, args.no_selfblast, args.no_coding_blast, args.out_prefix, ogLncs, args.min_overlap, args.min_coding_blast, OVERLAP_FILTER, WITHIN_FILTER, CODING_BLAST_FILTER, SELF_BLAST_FILTER, lncs)
+			writeWebsite(ANNOTS, args.assembly, args.no_self_blast, args.no_coding_blast, args.out_prefix, ogLncs, args.min_overlap, args.min_coding_blast, OVERLAP_FILTER, WITHIN_FILTER, CODING_BLAST_FILTER, SELF_BLAST_FILTER, lncs)
 		else:
 			writeNoFilterWebsite(args.out_prefix)
 		if not args.no_orth_search:

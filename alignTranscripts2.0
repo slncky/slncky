@@ -548,7 +548,7 @@ def main():
 								break
 						if not eclipsed:
 							curOrf = orfs[i]
-							curOrf.append(counter)
+							curOrf.append(score)
 							curOrf.append(geneAName)
 							curOrf.append(geneBName)
 							finalOrfs.append(curOrf)
@@ -712,25 +712,43 @@ def main():
 
 		for i in range(len(alignments)):
 			alignments[i].append(mafs[i])
-		alignments.sort(key = lambda x: (x[9], x[10]), reverse=True)
+		alignments.sort(key = lambda x: (x[3], x[4], x[10]), reverse=True)
+		
+		bestExonID = alignments[0][3]
+		bestLociID = alignments[0][4]
+		written = False
 		for a in alignments:
 			counter += 1
 			if (not args.shuffle_bg or a[9] > maxShuffleScore):
-				alignment.write("%d\t%d\t%s\t%s\t%0.3f\t%0.3f\t%0.3f\t%0.3f\t%0.3f\t" % (a[0], a[10], a[1], a[2], a[3], a[4], a[5], a[6], a[7]))
-				a[8].sort()
-				a[9].sort()
-				for exon in a[8]:
-					alignment.write("%d," % exon)
-				alignment.write("\t")
-				for exon in a[9]:
-					alignment.write("%d," % exon)
-				alignment.write("\n")
-				if (float(a[4] > 0.00)):
-					#print a[1:10]
-					#print a[11]
-					#print mafs[counter]
-					#mafout.write(mafs[counter])
-					mafout.write(a[11])
+				if (a[4] == 0.0 and not written):
+					written = True
+					alignment.write("%d\t%d\t%s\t%s\t%0.3f\t%0.3f\t%0.3f\t%0.3f\t%0.3f\t" % (a[0], a[10], a[1], a[2], a[3], a[4], a[5], a[6], a[7]))
+					a[8].sort()
+					a[9].sort()
+					for exon in a[8]:
+						alignment.write("%d," % exon)
+					alignment.write("\t")
+					for exon in a[9]:
+						alignment.write("%d," % exon)
+					alignment.write("\n")
+					if (float(a[4] > 0.0)):
+						mafout.write(a[11])
+				elif (a[4] != 0.0):
+					if ((bestExonID > 0.0 and a[3] > 0.0) or (bestExonID == 0)):
+						written = True
+						alignment.write("%d\t%d\t%s\t%s\t%0.3f\t%0.3f\t%0.3f\t%0.3f\t%0.3f\t" % (a[0], a[10], a[1], a[2], a[3], a[4], a[5], a[6], a[7]))
+						a[8].sort()
+						a[9].sort()
+						for exon in a[8]:
+							alignment.write("%d," % exon)
+						alignment.write("\t")
+						for exon in a[9]:
+							alignment.write("%d," % exon)
+						alignment.write("\n")
+						if (float(a[4] > 0.0)):
+							mafout.write(a[11])
+
+
 		alignment.close()
 
 if __name__ == "__main__":
