@@ -1476,12 +1476,13 @@ def main():
 			blastToCodingCodingBed.close()
 
 			#tar
-			null = open("/dev/null", 'w')
-			cmd = ['tar', '-czvf', coding_alignments_dir[0:-1]+".tar.gz", coding_alignments_dir]
-			subprocess.check_call(cmd, stdout = null, stderr = null)
-			null.close()
-			cmd = ['rm', '-rf', coding_alignments_dir]
-			subprocess.check_call(cmd)
+			if os.path.exists(coding_alignments_dir):	
+				null = open("/dev/null", 'w')
+				cmd = ['tar', '-czvf', coding_alignments_dir[0:-1]+".tar.gz", coding_alignments_dir]
+				subprocess.check_call(cmd, stdout = null, stderr = subprocess.STDOUT)
+				null.close()
+				cmd = ['rm', '-rf', coding_alignments_dir]
+				subprocess.check_call(cmd)
 			
 		#categorize orthologs by annotation
 		lncToCategory = categorizeLncsByAnnots(lncs, ANNOTS)
