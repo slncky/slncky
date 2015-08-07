@@ -60,9 +60,23 @@ def inExon(base, start, exonStarts, exonSizes, numExons, strand):
 	#print strand
 	for i in range(numExons):
 		if (base > start + exonStarts[i] and base <= (start + exonStarts[i] + exonSizes[i])):
-			if strand == "+": return i+1
-			else: return numExons-i
-	return -1
+			
+			#get position for splicing, 1 for first base in exon; -1 for last base in exon
+			if strand == "+":
+				posAbs = base - (start + exonStarts[i])
+			else:
+				posAbs = (start + exonStarts[i] + exonSizes[i]) - base + 1
+
+			if (posAbs == 1): pos = 1
+			elif (posAbs == exonSizes[i]): pos = -1
+			else: pos = 0
+
+			
+
+			if strand == "+": return i+1, pos
+			else: return numExons-i, pos
+
+	return -1, 0
 
 def inIntron(base, exonStarts, exonSizes, numExons, strand, geneSize):
 	#print strand
@@ -102,9 +116,9 @@ def getFa(bed, fasta):
 def alignFa(paddedAFaPath, paddedBFaPath, unmask, gap_open, gap_extend):
 	tmpFd, tmpPath = tempfile.mkstemp()
 	if unmask:
-		cmd = [LASTZ, paddedAFaPath+"[unmask]", paddedBFaPath+"[unmask]", '--format=maf', '--output=%s' % tmpPath, '--chain', '--gap=%d,%d' %(gap_open, gap_extend)]
+		cmd = [LASTZ, '--strand=plus', paddedAFaPath+"[unmask]", paddedBFaPath+"[unmask]", '--format=maf', '--output=%s' % tmpPath, '--chain', '--gap=%d,%d' %(gap_open, gap_extend)]
 	else:
-		cmd = [LASTZ, paddedAFaPath, paddedBFaPath, '--format=maf', '--output=%s' % tmpPath, '--chain', '--gap=%d,%d' %(gap_open, gap_extend)]
+		cmd = [LASTZ, '--strand=plus', paddedAFaPath, paddedBFaPath, '--format=maf', '--output=%s' % tmpPath, '--chain', '--gap=%d,%d' %(gap_open, gap_extend)]
 
 	nullFd, nullPath = tempfile.mkstemp()
 	null = open(nullPath, 'w')
@@ -245,11 +259,13 @@ def checkForOrfs(stringA, stringB, baseA, baseB, pad, geneAStart, geneAEnd, exon
 	
 	#get all possible start codons
 	for i in range(len(stringA)):
-		exonA = inExon(baseAGen, geneAStart, exonStartsA, exonSizesA, numExonsA, strandA) 
-		exonB = inExon(baseBGen, geneBStart, exonStartsB, exonSizesB, numExonsB, strandB)
+		exonA, pos = inExon(baseAGen, geneAStart, exonStartsA, exonSizesA, numExonsA, strandA) 
+		exonB, pos = inExon(baseBGen, geneBStart, exonStartsB, exonSizesB, numExonsB, strandB) 
+
 		
 		if exonA != -1 and exonB != -1:
 			if stringA[i:i+3].upper() == "ATG" and stringB[i:i+3].upper() == "ATG":
+				print baseAGen
 				starts.append(i)
 				startBaseA.append(baseAGen)
 				startBaseB.append(baseBGen)
@@ -272,8 +288,8 @@ def checkForOrfs(stringA, stringB, baseA, baseB, pad, geneAStart, geneAEnd, exon
 		#extract orf sequences
 		for j in range(starts[i], len(stringA)):
 
-			exonA = inExon(baseAGen, geneAStart, exonStartsA, exonSizesA, numExonsA, strandA) 
-			exonB = inExon(baseBGen, geneBStart, exonStartsB, exonSizesB, numExonsB, strandB)
+			exonA, pos = inExon(baseAGen, geneAStart, exonStartsA, exonSizesA, numExonsA, strandA) 
+			exonB, pos = inExon(baseBGen, geneBStart, exonStartsB, exonSizesB, numExonsB, strandB)
 		
 			if exonA != -1 and exonB != -1: 
 				orfA += stringA[j]
@@ -494,10 +510,15 @@ def main():
 		truncBStart = -1
 		exonsAlignedA = []
 		exonsAlignedB = []
+		spliceStart = [0]*(numExonsA-1)
+		spliceEnd = [0]*(numExonsA-1)
 		counter = 0
 		indelRate = 0
+		indelRateIntron = 0
 		inIndel = False
+		inIndelIntron = False
 		seen = 0
+		seenIntron = 0
 		for line in maf:
 			line = line.strip()
 			if line.startswith("#"): 
@@ -519,10 +540,23 @@ def main():
 
 			#at line break, reset
 			if line == "" and stringA !="":
-				if seen == 0:
-					alignments.append([counter, geneAName, geneBName, exonId / (exonASize*1.0), id / (geneASize*1.0), exonId / (exonBSize*1.0), id / (geneBSize*1.0), 0, exonsAlignedA, exonsAlignedB, score])
-				else:
-					alignments.append([counter, geneAName, geneBName, exonId / (exonASize*1.0), id / (geneASize*1.0), exonId / (exonBSize*1.0), id / (geneBSize*1.0), indelRate / (seen*1.0), exonsAlignedA, exonsAlignedB, score])
+				if seen == 0: indelRateNorm = 'NA'
+				else: indelRateNorm = indelRate / (seen * 1.0)
+				
+				if seenIntron == 0: indelRateIntronNorm = 'NA'
+				else: indelRateIntronNorm = indelRateIntron / (seenIntron * 1.0)
+			
+				#print counter	
+				#print spliceStart
+				#print spliceEnd
+				
+				numSpliceConserved = 0.0
+				for i in range(numExonsA-1):
+					if spliceStart[i] == spliceEnd[i] - 1: numSpliceConserved += 1
+					elif spliceStart[i]> 0 or spliceEnd[i] > 0: numSpliceConserved += 0.5
+				#print "numSpliceConserved: ", numSpliceConserved
+
+				alignments.append([counter, geneAName, geneBName, exonId / (exonASize*1.0), id / (geneASize*1.0), exonId / (exonBSize*1.0), id / (geneBSize*1.0), indelRateNorm, indelRateIntronNorm, exonsAlignedA, exonsAlignedB, score, numSpliceConserved])
 					
 
 				#write maf
@@ -537,7 +571,7 @@ def main():
 				mafs.append(mafStr)
 					
 
-					#check for small orfs
+				#check for small orfs
 				if args.orf and exonId != 0:
 					orfs = checkForOrfs(stringA, stringB, baseA, baseB, args.pad, geneAStart, geneAEnd, exonStartsA, exonSizesA, numExonsA, strandA, geneBStart, geneBEnd, exonStartsB, exonSizesB, numExonsB, strandB)
 					for i in range(len(orfs)):
@@ -552,7 +586,7 @@ def main():
 							curOrf.append(geneAName)
 							curOrf.append(geneBName)
 							finalOrfs.append(curOrf)
-				
+
 				#reset stats
 				exonId = 0
 				intronId = 0
@@ -568,9 +602,16 @@ def main():
 				truncBStart = -1
 				exonsAlignedA = []
 				exonsAlignedB = []
+				spliceStart = [0]*(numExonsA-1)
+				spliceEnd = [0]*(numExonsA-1)
 				indelRate = 0
+				indelRateIntron = 0
 				inIndel = False	
+				inIndelIntron = False
 				seen = 0
+				seenIntron = 0
+
+			#print "*****"
 			#if stringA and stringB populated, crawl alignments
 			if stringB != "" and stringA !="":
 				if strandA == "+": baseAGen = geneAStart + baseA - args.pad + 1
@@ -590,10 +631,19 @@ def main():
 						truncB += stringB[i]
 
 
-					exonA = inExon(baseAGen, geneAStart, exonStartsA, exonSizesA, numExonsA, strandA) 
-					exonB = inExon(baseBGen, geneBStart, exonStartsB, exonSizesB, numExonsB, strandB)
+					exonA, exonAPos = inExon(baseAGen, geneAStart, exonStartsA, exonSizesA, numExonsA, strandA) 
+					exonB, exonBPos = inExon(baseBGen, geneBStart, exonStartsB, exonSizesB, numExonsB, strandB)
 					
+					#if (exonAPos == -1 or exonAPos == 1): print exonA, exonAPos, stringA[i]
+					#splice start
+					if (exonAPos == -1 and exonBPos == -1): 
+						#print (exonA-0), "splice start", exonAPos, exonBPos, stringA[i-20:i+20], stringB[i-20:i+20]
+						if (exonA < numExonsA): spliceStart[exonA-1] = exonB
 					
+					if (exonAPos == 1 and exonBPos == 1): 
+						#print (exonA-1), "splice end", exonAPos, exonBPos, stringA[i-20:i+20], stringB[i-20:i+20]
+						if (exonA > 1): spliceEnd[exonA-2] = exonB
+
 					#if its inside gene
 					if baseAGen >= geneAStart and baseAGen < geneAEnd and baseBGen >= geneBStart and baseBGen < geneBEnd:
 						if stringB[i].upper()==stringA[i].upper():
@@ -602,6 +652,10 @@ def main():
 						#if it's inside exons
 						if exonA != -1 and exonB != -1:
 							seen += 1
+							
+							#reset inIndelIntron
+							if inIndelIntron: inIndelIntron = False
+
 							#if in exons and '-' at alignment
 							if stringA[i] == "-" or stringB[i] == "-":
 								if not inIndel:
@@ -616,11 +670,26 @@ def main():
 								if exonB not in exonsAlignedB: exonsAlignedB.append(exonB)
 
 
-						#if at introns, reset inIndel
+						#else if inside intron-intron alignment
+						elif exonA == -1 and exonB == -1:
+							seenIntron += 1
+
+							#reset inIndel(exons)
+							if inIndel: inIndel = False
+							
+							#if in introns and '-' at alignment
+							if stringA[i] == "-" or stringB[i] == "-":
+								if not inIndelIntron:
+									inIndelIntron = True
+									indelRateIntron += 1
+							else:
+								inIndelIntron = False
+						
+						#else if at exon/intron alignment, just reset inIndel
 						else:
 							if inIndel: inIndel = False
-					
-					
+							if inIndelIntron: inIndelIntron = False
+
 					if stringA[i] !="-": 
 						if strandA == "+": baseAGen += 1
 						else: baseAGen -= 1
@@ -684,8 +753,8 @@ def main():
 		maxShuffleScore = shuffleScores[int(floor(len(shuffleScores)* (1.0-args.pvalue)))]
 		maxScore = maxShuffleScore
 		for a in alignments:
-			if a[9] > maxScore: 
-				maxScore = a[9]
+			if a[11] > maxScore: 
+				maxScore = a[11]
 				break
 	
 	cmd = ['rm', paddedABedPath, paddedBBedPath, paddedAFaPath, paddedBFaPath, mafPath]
@@ -706,7 +775,7 @@ def main():
 			mafout.write(line+"\n")
 		
 
-		alignment.write("#alignmentID\talignmentScore\tgeneA\tgeneB\texonID_A\tgeneID_A\texonID_B\tgeneID_B\tindelRate\texonsAlignedA\texonsAlignedB\n")
+		alignment.write("#alignmentID\talignmentScore\tgeneA\tgeneB\texonID_A\tgeneID_A\texonID_B\tgeneID_B\tindelRate(exons)\tindelRate(introns)\texonsAlignedA\texonsAlignedB\tnumSpliceSitesAligned\tnumTotalSpliceSites\n")
 		counter = -1
 		
 
@@ -719,35 +788,66 @@ def main():
 		written = False
 		for a in alignments:
 			counter += 1
-			if (not args.shuffle_bg or a[9] > maxShuffleScore):
+			if (not args.shuffle_bg or a[11] > maxShuffleScore):
 				if (a[4] == 0.0 and not written):
 					written = True
-					alignment.write("%d\t%d\t%s\t%s\t%0.3f\t%0.3f\t%0.3f\t%0.3f\t%0.3f\t" % (a[0], a[10], a[1], a[2], a[3], a[4], a[5], a[6], a[7]))
-					a[8].sort()
+					alignment.write("%d\t%d\t%s\t%s\t%0.3f\t%0.3f\t%0.3f\t%0.3f\t" % (a[0],a[11], a[1], a[2], a[3], a[4], a[5], a[6]))
+					
+					#write indelRate
+					if str(a[7]) != "NA": alignment.write("%0.3f\t" % a[7])
+					else: alignment.write("NA\t")
+
+					if str(a[8]) != "NA": alignment.write("%0.3f\t" % a[8])
+					else: alignment.write("NA\t")
+
 					a[9].sort()
-					for exon in a[8]:
-						alignment.write("%d," % exon)
+					a[10].sort()
+					if len(a[9]) > 0:
+						for exon in a[9]:
+							alignment.write("%d," % exon)
+					else:
+						alignment.write("NA")
 					alignment.write("\t")
-					for exon in a[9]:
-						alignment.write("%d," % exon)
+					if len(a[10]) > 0:
+						for exon in a[10]:
+							alignment.write("%d," % exon)
+					else:
+						alignment.write("NA")
+
+					alignment.write("\t%.1f\t%d" % (a[12], min(numExonsA, numExonsB)-1))
 					alignment.write("\n")
 					if (float(a[4] > 0.0)):
-						mafout.write(a[11])
+						mafout.write(a[13])
 				elif (a[4] != 0.0):
 					if ((bestExonID > 0.0 and a[3] > 0.0) or (bestExonID == 0)):
 						written = True
-						alignment.write("%d\t%d\t%s\t%s\t%0.3f\t%0.3f\t%0.3f\t%0.3f\t%0.3f\t" % (a[0], a[10], a[1], a[2], a[3], a[4], a[5], a[6], a[7]))
-						a[8].sort()
+						alignment.write("%d\t%d\t%s\t%s\t%0.3f\t%0.3f\t%0.3f\t%0.3f\t" % (a[0], a[11], a[1], a[2], a[3], a[4], a[5], a[6]))
+					
+						#write indelRate
+						if str(a[7]) != "NA": alignment.write("%0.3f\t" % a[7])
+						else: alignment.write("NA\t")
+
+						if str(a[8]) != "NA": alignment.write("%0.3f\t" % a[8])
+						else: alignment.write("NA\t")
+	
 						a[9].sort()
-						for exon in a[8]:
-							alignment.write("%d," % exon)
+						a[10].sort()
+						if len(a[9]) > 0:
+							for exon in a[9]:
+								alignment.write("%d," % exon)
+						else:
+							alignment.write("NA")
 						alignment.write("\t")
-						for exon in a[9]:
-							alignment.write("%d," % exon)
+						if len(a[10]) > 0:
+							for exon in a[10]:
+								alignment.write("%d," % exon)
+						else:
+							alignment.write("NA")
+
+						alignment.write("\t%.1f\t%d" % (a[12], min(numExonsA, numExonsB)-1))
 						alignment.write("\n")
 						if (float(a[4] > 0.0)):
-							mafout.write(a[11])
-
+							mafout.write(a[13])
 
 		alignment.close()
 
