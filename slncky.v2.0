@@ -246,12 +246,12 @@ def pickCanonicalLnc(lncs):
 		if NEWBED:
 			cmd = "%s -i %s | %s -i - -c 4 -o distinct -delim \";\"" % (SORTBED, lncExonPath, MERGEBED)
 		else:	
-			cmd = "%s -i %s | %s -i /dev/stdin -nms" % (SORTBED, lncExonPath, MERGEBED)
+			cmd = "%s -i %s | %s -i - -nms" % (SORTBED, lncExonPath, MERGEBED)
 	else: 
 		if NEWBED:
 			cmd = "%s -i %s | %s -s -i - -c 4 -o distinct -delim \";\"" % (SORTBED, lncExonPath, MERGEBED)
 		else:
-			cmd = "%s -i %s | %s -s -i /dev/stdin -nms" % (SORTBED, lncExonPath, MERGEBED)
+			cmd = "%s -i %s | %s -s -i - -nms" % (SORTBED, lncExonPath, MERGEBED)
 
 	out = subprocess.check_output([cmd], shell=True)
 	out = out.split("\n")
@@ -364,7 +364,6 @@ def blastToOrtholog(lncs, annots, orth_annots, blastTo, n, alignments_dir, minMa
 	orfQueue = Queue()
 	ORFS = []	
 	FLUSHED = 0
-	
 	lncFile = writeToTmp(lncs)
 	
 	liftOverFd, liftOverPath = tempfile.mkstemp()
@@ -372,8 +371,8 @@ def blastToOrtholog(lncs, annots, orth_annots, blastTo, n, alignments_dir, minMa
 
 
 	#liftover
-	if multiple: cmd = "cut -f1-4 %s | %s -i /dev/stdin -g %s -b %d | %s -minMatch=%.3f -multiple /dev/stdin %s /dev/stdout %s" % (lncFile, SLOPBED, annots["GENOME_FA"][0]+".fai", pad, LIFTOVER, minMatch, annots["LIFTOVER"][0], unmappedPath)
-	else: cmd = "cut -f1-4 %s | %s -i /dev/stdin -g %s -b %d | %s -minMatch=%.3f /dev/stdin %s /dev/stdout %s" % (lncFile, SLOPBED, annots["GENOME_FA"][0]+".fai", pad, LIFTOVER, minMatch, annots["LIFTOVER"][0], unmappedPath)
+	if multiple: cmd = "cut -f1-4 %s | %s -i - -g %s -b %d | %s -minMatch=%.3f -multiple /dev/stdin %s /dev/stdout %s" % (lncFile, SLOPBED, annots["GENOME_FA"][0]+".fai", pad, LIFTOVER, minMatch, annots["LIFTOVER"][0], unmappedPath)
+	else: cmd = "cut -f1-4 %s | %s -i - -g %s -b %d | %s -minMatch=%.3f /dev/stdin %s /dev/stdout %s" % (lncFile, SLOPBED, annots["GENOME_FA"][0]+".fai", pad, LIFTOVER, minMatch, annots["LIFTOVER"][0], unmappedPath)
 	
 	if len(annots["LIFTOVER"]) > 1:
 		for i in range(1,len(annots["LIFTOVER"])):
@@ -382,6 +381,7 @@ def blastToOrtholog(lncs, annots, orth_annots, blastTo, n, alignments_dir, minMa
 	cmd += " > %s" % liftOverPath
 
 	null = open("/dev/null", 'w')
+	#print cmd
 	proc = subprocess.check_call([cmd],shell=True, stdout=null, stderr=null)
 	null.close()
 	
@@ -392,8 +392,8 @@ def blastToOrtholog(lncs, annots, orth_annots, blastTo, n, alignments_dir, minMa
 	null = open("/dev/null", 'w')
 	for file in orth_annots[blastTo]:
 		numAligned = 0
-		if multiple: cmd = "%s -i %s -g %s -b %d | %s -wa -wb -a /dev/stdin -b %s | cut -f4,6- | sort -u " % (SLOPBED, liftOverPath, orth_annots["GENOME_FA"][0]+".fai", pad, INTERSECTBED, file) 
-		else: cmd = "%s -i %s -g %s -b %d | %s -wa -wb -a /dev/stdin -b %s | cut -f4- | sort -u " % (SLOPBED, liftOverPath, orth_annots["GENOME_FA"][0]+".fai", pad, INTERSECTBED, file)
+		if multiple: cmd = "%s -i %s -g %s -b %d | %s -wa -wb -a - -b %s | cut -f4,6- | sort -u " % (SLOPBED, liftOverPath, orth_annots["GENOME_FA"][0]+".fai", pad, INTERSECTBED, file) 
+		else: cmd = "%s -i %s -g %s -b %d | %s -wa -wb -a - -b %s | cut -f4- | sort -u " % (SLOPBED, liftOverPath, orth_annots["GENOME_FA"][0]+".fai", pad, INTERSECTBED, file)
 		try:
 			out = subprocess.check_output(cmd, stderr=null, shell=True)
 		except subprocess.CalledProcessError as e:
@@ -477,7 +477,6 @@ def blastToOrtholog(lncs, annots, orth_annots, blastTo, n, alignments_dir, minMa
 	os.remove(liftOverPath)
 	os.remove(unmappedPath)
 
-	#newLncs, numRemoved = removeLncs(lncs, FILTER)
 	return FILTER, ORFS
 
 def readMaf(maf, FILTER):
@@ -524,7 +523,7 @@ def selfBlastOneLnc(curLnc, lncs, FILTER, tmpPath):
 
 	FILTER.put(0)
 
-def selfBlast(lncs, annots, file, n):
+def selfBlast(lncs, annots, file, n, no_collapse):
 	queue = Queue()
 
 	processes = []
@@ -571,8 +570,6 @@ def selfBlast(lncs, annots, file, n):
 		subprocess.call(cmd)
 	else:
 		queryLncFaPath = annots[file]
-		
-		
 
 	for lnc, entry in lncs.iteritems():
 		numAligned += 1
@@ -582,15 +579,26 @@ def selfBlast(lncs, annots, file, n):
 		curLnc[lnc] = entry
 		for query in queryLncFaPath:
 			curLncFile = writeToTmp(curLnc)
+			
+			#make target fasta
+			#make query fasta
+			if file == "self" and no_collapse:
+				newQuery = curLncFile+".query.fa"
+				cmd = "%s -v -a %s -b %s | %s -split -name -s -fi %s -bed - -fo %s" % (INTERSECTBED, lncFile, curLncFile, FASTAFROMBED, annots["GENOME_FA"][0], newQuery)
+				#print cmd
+				out = subprocess.check_call([cmd], shell=True)
+
 			curLncFaPath = curLncFile+".fa"
-		
+			
 			cmd = [FASTAFROMBED, '-s', '-fi', annots["GENOME_FA"][0], '-bed', curLncFile, '-fo', curLncFaPath, '-split', '-name']
+			#print cmd
 			subprocess.check_call(cmd)
 			os.remove(curLncFile)
 		
 			mafBedPath = curLncFile+".maf"
 		
-			p = Process(target=selfBlastOneLnc, args=(curLncFaPath, query, queue, mafBedPath))
+			if file == "self" and no_collapse: p = Process(target=selfBlastOneLnc, args=(curLncFaPath, newQuery, queue, mafBedPath))
+			else: p = Process(target=selfBlastOneLnc, args=(curLncFaPath, query, queue, mafBedPath))
 			p.start()
 			processes.append(p)
 		
@@ -626,7 +634,7 @@ def selfBlast(lncs, annots, file, n):
 
 def selfBlastShuffle(lncs, ANNOTS, threads):
 	lncToScores = {}
-	selfBlastShuffleResults = selfBlast(lncs, ANNOTS, "shuffle", threads)
+	selfBlastShuffleResults = selfBlast(lncs, ANNOTS, "shuffle", threads, False)
 	for item in selfBlastShuffleResults:
 		if item[0] in lncToScores:
 			arr = lncToScores[item[0]]
@@ -643,10 +651,10 @@ def selfBlastShuffle(lncs, ANNOTS, threads):
 
 	return lncToScores
 
-def selfBlastFilter(lncs, lncToScores, ANNOTS, threads, min):
+def selfBlastFilter(lncs, lncToScores, ANNOTS, threads, min, no_collapse):
 	
 	print "\n\n        aligning transcripts to each other..."	
-	selfBlastResults = selfBlast(lncs, ANNOTS, "self", threads)
+	selfBlastResults = selfBlast(lncs, ANNOTS, "self", threads, no_collapse)
 	selfBlastSets = []
 	selfBlastSig = []
 	for item in selfBlastResults:
@@ -685,7 +693,7 @@ def selfBlastFilter(lncs, lncToScores, ANNOTS, threads, min):
 def dupFilter(lncs, lncToScores, ANNOTS, threads):
 	
 	print "\n\n        aligning transcripts to annotated duplications..."	
-	selfBlastResults = selfBlast(lncs, ANNOTS, "DUPS", threads)
+	selfBlastResults = selfBlast(lncs, ANNOTS, "DUPS", threads, False)
 	
 	lncToMax = {}
 	
@@ -740,7 +748,6 @@ def codingBlastFilter(coding_alignments_dir, coding_blast_min, minMatch, pad, ga
 				coding[item[0]] = ogLncs[item[0]]
 				seen.add(item[1])
 				counter += 1
-		
 
 		CODING_POSITIVES, NULL = blastToOrtholog(coding, ANNOTS, ORTH_ANNOTS, "CODING", threads, coding_positive_dir, minMatch, False, pad, gap_open, gap_extend, False, False)
 
@@ -1087,25 +1094,33 @@ def categorizeLncsByAnnots(lncs, ANNOTS):
 				category = "mir_host"
 		#check if divergent
 		if category == "" and "CODING" in ANNOTS:
+			out = ""
 			for file in ANNOTS["CODING"]:
 				if category != "": break
-				cmd = [CLOSESTBED, '-id', '-D', 'a', '-S', '-a', curLncFile, '-b', file]
-				out = subprocess.check_output(cmd)
-				out = out.split("\n")
-				for line in out:
-					if line.strip() == "": break
-					if category != "": break
-					line = line.split("\t")
-					if line[5] == "+":
-						lncTSS = int(line[1])
-					else:
-						lncTSS = int(line[2])
-					if line[17] == "+":
-						codingTSS = int(line[13])
-					else:
-						codingTSS = int(line[14])
-					if abs(lncTSS - codingTSS) <=500:
-						category = "divergent"
+				cmd = "%s -i %s > %s.tmp" % (SORTBED, file, file)
+				subprocess.check_call([cmd], shell=True)
+				cmd = "mv %s.tmp %s" % (file, file)
+				subprocess.check_call([cmd], shell=True)
+
+				cmd = [CLOSESTBED, '-S', '-a', curLncFile, '-b', file]
+				out += subprocess.check_output(cmd)
+			out = out.split("\n")
+			minDist = -1
+			for line in out:
+				if line.strip() == "": break
+				if category != "": break
+				line = line.split("\t")
+				if line[5] == "+":
+					lncTSS = int(line[1])
+				else:
+					lncTSS = int(line[2])
+				if line[17] == "+":
+					codingTSS = int(line[13])
+				else:
+					codingTSS = int(line[14])
+				minDist = abs(lncTSS - codingTSS)
+			if minDist <= 500:
+				category = "divergent"
 		if category == "":
 			category = "intergenic"
 		lncToCategory[lnc] = category
@@ -1181,7 +1196,8 @@ def main():
 	parser.add_argument('--min_overlap', type=float, help='remove any transcript that overlap annotated coding gene > min_overlap%%. default = 0%%', default=0)
 	parser.add_argument('--min_cluster', type=int, help='min size of duplication clusters to remove. default=2', default=2)
 	parser.add_argument('--min_coding', type=float, help='min exonic identity to filter out transcript that blasts to orthologous coding gene. default is set by learning coding alignment distribution from data', default=None)
-	parser.add_argument('--no_overlap', action='store_true', help='flag if don\'t want to overlap with coding')
+	parser.add_argument('--no_overlap', action='store_true', help='flag if you don\'t want to overlap with coding')
+	parser.add_argument('--no_collapse', action='store_true', help='flag if you don\'t want to collapse isoforms')
 	parser.add_argument('--no_dup', action='store_true', help='flag if don\'t want to align to duplicates')
 	parser.add_argument('--no_self', action='store_true', help='flag if you don\'t want to self-align for duplicates')
 	parser.add_argument('--no_coding', action='store_true', help='flag if you don\'t want to align to orthologous coding')
@@ -1311,11 +1327,11 @@ def main():
 
 			if "MAPPED_CODING" in ANNOTS:
 				print "        Removing..."
-				lncs, OVERLAP_FILTER, numRemoved = removeOverlap(lncs, ANNOTS["CODING"]+ANNOTS["MAPPED_CODING"], ['-split'], minOverlap)
+				lncs, OVERLAP_FILTER, numRemoved = removeOverlap(lncs, ANNOTS["CODING"]+ANNOTS["MAPPED_CODING"], ['-split', '-s'], minOverlap)
 				print "                ... %d transcripts that overlap coding or mapped coding transcript" % (numRemoved)
 			else:
 				print "        Removing..."
-				lncs, OVERLAP_FILTER, numRemoved = removeOverlap(lncs, ANNOTS["CODING"], ['-split'], minOverlap)
+				lncs, OVERLAP_FILTER, numRemoved = removeOverlap(lncs, ANNOTS["CODING"], ['-split', '-s'], minOverlap)
 				print "                ... %d transcripts that overlap coding transcript" % (numRemoved)
 			
 			#output overlap filter info
@@ -1341,7 +1357,7 @@ def main():
 						ucscSet.add(x[0])
 
 		##COLLAPSE OVERLAPPING TRANSCRIPTS INTO SINGLE GENE##
-		if len(lncs) > 0:
+		if len(lncs) > 0 and not args.no_collapse:
 			before = len(lncs)
 			lncs, lncToCluster = pickCanonicalLnc(lncs)
 			after = len(lncs)
@@ -1384,7 +1400,8 @@ def main():
 			else:
 				print "        reusing null distribution from previous step"
 
-			lncs, SELF_BLAST_FILTER, finalClusters = selfBlastFilter(lncs, lncShuffleScores, ANNOTS, args.threads, args.min_cluster)
+			lncs, SELF_BLAST_FILTER, finalClusters = selfBlastFilter(lncs, lncShuffleScores, ANNOTS, args.threads, args.min_cluster, args.no_collapse)
+
 		
 			#get stats on final clustters
 			if len(finalClusters)> 0:
@@ -1488,7 +1505,6 @@ def main():
 		lncToCategory = categorizeLncsByAnnots(lncs, ANNOTS)
 		#get gene symbol
 		lncToGeneSymbol = geneSymbol(lncs, ANNOTS)	
-		
 		
 		
 		#WRITE FILTERED DATA
