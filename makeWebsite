@@ -1,0 +1,555 @@
+#!/usr/bin/env python
+import os
+import sys
+import argparse
+import operator
+import numpy as np
+import math
+
+names = {}
+humanBed = {}
+mouseBed = {}
+
+
+types = ["mir_host_intron", "divergent", "sno_host", "intergenic", "mir_host_exon"]
+
+typeToType = {
+		'intergenic': 'intergenic',
+		'divergent': 'divergent',
+		'mir_host_intron': 'intronic miRNA host',
+		'mir_host_exon': 'exonic miRNA host',
+		'sno_host': 'snoRNA host',
+		'coding': 'coding'
+}
+
+longname = {
+		'TTI': "Transcript-Transcript Identity",
+		'TGI': "Transcript-Genome Identity",
+		'SSC': "Splice Site Conservation",
+		'IDR': "Indel Rate"
+}
+
+TTI = {
+	'mir_host_intron' : np.array([]),
+	'divergent' : np.array([]),
+	'sno_host' : np.array([]),
+	'intergenic' : np.array([]),
+	'mir_host_exon': np.array([])
+}
+
+TTIStats = {}
+
+
+TGI = {
+	'mir_host_intron' : np.array([]),
+	'divergent' : np.array([]),
+	'sno_host' : np.array([]),
+	'intergenic' : np.array([]),
+	'mir_host_exon': np.array([])
+}
+
+TGIStats = {}
+
+SSC = {
+	'mir_host_intron' : np.array([]),
+	'divergent' : np.array([]),
+	'sno_host' : np.array([]),
+	'intergenic' : np.array([]),
+	'mir_host_exon': np.array([])
+}
+
+SSCStats = {}
+
+
+IDR = {
+	'mir_host_intron' : np.array([]),
+	'divergent' : np.array([]),
+	'sno_host' : np.array([]),
+	'intergenic' : np.array([]),
+	'mir_host_exon': np.array([])
+}
+
+IDRStats = {}
+
+
+colors = {
+	'mir_host_intron' : "rgb(237, 145, 33)",
+	'divergent' : "rgb(33, 135, 237)",
+	'sno_host' : "rgb(192, 64, 160)",
+	'intergenic' : "rgb(52, 158, 66)",
+	'mir_host_exon': "rgb(237, 94, 33)"
+}
+
+def writeBrowse(filename, prefix):
+	global TTI
+	global TGI
+	global SSC
+	global IDR
+	global REALPATH
+
+	browse = open(prefix+'browse.html', 'w')
+	
+	header = open(REALPATH+'/templates/browserHeader.txt', 'r')
+	for line in header.readlines():
+		browse.write(line)
+
+	f = open(filename, 'r')
+	for line in f.readlines():
+		if line[0]=="#": continue
+		line = line.split('\t')
+		
+		lnc = line[0].strip()
+		orth = line[2].strip()
+		mAlt = line[1].strip()
+		hAlt = line[3].strip()
+
+		#get type
+		if line[13].strip() == line[14].strip(): type = line[13].strip()
+		else: type="intergenic"
+
+		curTti = float(line[5].strip())
+		if type in TTI: TTI[type] = np.append(TTI[type], [curTti])
+		curTgi = float(line[6].strip())
+		if type in TGI: TGI[type] = np.append(TGI[type], [curTgi])
+
+		if line[8].strip() != "NA" and float(line[8].strip()) > 0 and float(line[7].strip()) > 0:
+			curIdr = math.log(float(line[7].strip()) / float(line[8].strip()), 2)
+			if type in IDR: IDR[type] = np.append(IDR[type], curIdr)
+		else:
+			curIdr = 'NA'
+
+		curSpliceCon = float(line[11])
+		curSpliceTotal = int(line[12])
+		
+		if curSpliceTotal > 0: 
+			if type in SSC: SSC[type] = np.append(SSC[type], [curSpliceCon / curSpliceTotal])
+
+		mouseExons = line[9].strip()
+		humanExons = line[10].strip()
+		
+		#write first four columns
+		browse.write("<tr><td><a href=\"lnc/%s.html\" target=\"_blank\">%s</a></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%.2f</td><td>%.2f</td>" % (lnc, lnc, mAlt, orth, hAlt, typeToType[type], curTti, curTgi))
+		
+		if curIdr == "NA":
+			browse.write("<td>-</td>")
+		elif curIdr == 0:
+			browse.write("<td>0.00</td>")
+		elif curIdr > 0:
+			browse.write("<td class=\"red\">%.2f</td>" % curIdr)
+		elif curIdr < 0:
+			browse.write("<td class=\"green\">%.2f</td>" % curIdr)
+
+		browse.write("<td>%.1f</td><td>%d</td><td>%s</td><td>%s</td></tr>\n" % (curSpliceCon, curSpliceTotal, mouseExons, humanExons))
+
+	footer = open(REALPATH+"templates/browserFooter.txt", 'r')
+
+	for line in footer.readlines():
+		browse.write(line)
+	
+	browse.close()
+	f.close()
+
+def getStats(arr):
+	if len(arr) == 0:
+		return [0,0,0,0,0]
+	#get stats
+	first = np.percentile(arr, 25)
+	median = np.median(arr)
+	third = np.percentile(arr, 75)
+
+	IQR = third-first
+	lower = max(np.amin(arr), first - 1.5*IQR)
+	upper = min(np.amax(arr), third + 1.5*IQR)
+
+	return [lower, first, median, third, upper]
+
+def calculateStats():
+	global TTIStats
+	global TGIStats
+	global SSCStats
+	global IDRStats
+
+	global types
+
+	for type in types:
+		TGIStats[type] = getStats(TGI[type])
+
+	for type in types:
+		TTIStats[type] = getStats(TTI[type])
+	
+	for type in types:
+		SSCStats[type] = getStats(SSC[type])
+
+	for type in types:
+		IDRStats[type] = getStats(IDR[type])
+
+
+def writeBox(name, x0, stats, web):
+	global colors
+
+	op = colors[name]
+	trans = "rgba"+op[3:-1]+", 0.7)"
+
+	web.write("//%s\n" % name)
+
+	#rectangle
+	web.write("{\ntype: 'rect',\nx0: %.1f,\ny0: %.2f,\nx1: %.1f,\ny1: %.2f,\n" % (x0-.3, stats[1], x0+.3, stats[3]))
+	web.write("line: {\n color: '%s',\nwidth: 2\n},\nfillcolor: '%s'\n},\n" % (op, trans))
+	
+	#top vertical
+	web.write("{\ntype: 'line', \nx0: %d,\ny0: %.2f,\tx1: %d,\ny1: %.2f,\n" % (x0, stats[3], x0, stats[4]))
+	web.write("line: {\ncolor: '%s',\nwidth: 2,\ndash: 'dashdot'\n}\n}," % op)
+	
+	#bottom vertical
+	web.write("{\ntype: 'line', \nx0: %d,\ny0: %.2f,\tx1: %d,\ny1: %.2f,\n" % (x0, stats[0], x0, stats[1]))
+	web.write("line: {\ncolor: '%s',\nwidth: 2,\ndash: 'dashdot'\n}\n}," % op)
+
+	#top horizontal
+	web.write("{\ntype: 'line', \nx0: %.1f,\ny0: %.2f,\tx1: %.1f,\ny1: %.2f,\n" % (x0-.2, stats[4], x0+.2, stats[4]))
+	web.write("line: {\ncolor: '%s',\nwidth: 2,\n}\n}," % op)
+	
+	#bottom horizontal
+	web.write("{\ntype: 'line', \nx0: %.1f,\ny0: %.2f,\tx1: %.1f,\ny1: %.2f,\n" % (x0-.2, stats[0], x0+.2, stats[0]))
+	web.write("line: {\ncolor: '%s',\nwidth: 2,\n}\n}," % op)
+
+	#median
+	web.write("{\ntype: 'line', \nx0: %.1f,\ny0: %.2f,\tx1: %.1f,\ny1: %.2f,\n" % (x0-.3, stats[2], x0+.3, stats[2]))
+	web.write("line: {\ncolor: '%s',\nwidth: 4,\n}\n}," % op)
+
+
+def writeBoxplot(name, lnc, data, lncType, stats, web):
+
+	global types
+	global longname
+
+	web.write("<div id =\"%s\" style=\"display:inline-block\"></div>" % name)
+	web.write("<script>")
+	
+	#write data point
+	web.write("var %s = {\n" % lnc.replace("-", "").replace(".", ""))
+	web.write("x: [\"intronic miRNA host\", \"divergent\", \"snoRNA host\", \"intergenic\", \"exonic miRNA host\"],\n")
+	web.write("y: [%.2f, %.2f, %.2f, %.2f, %.2f],\n" % (data, data, data, data, data))
+	web.write("text: ['%s', '%s', '%s', '%s', '%s'],\n" % (lnc, lnc, lnc, lnc, lnc))
+	
+	color = ['rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0)']
+	if lncType in types: color[types.index(lncType)] = 'rgba(0, 0, 0, 1)'
+
+	colorStr = "['%s', '%s', '%s', '%s', '%s']" % (color[0], color[1], color[2], color[3], color[4])
+	web.write("mode: 'markers',\nmarker: {\ncolor: %s,\nsize:10,\nsymbol:\"circle-dot\"},\n};\n" % colorStr)
+	web.write("var data = [%s];" % lnc.replace("-", "").replace(".", ""))
+	
+	web.write("var layout = {\nxaxis: {\nrange: [-.8, 4.7],\ntype: 'category',\nshowgrid: false,\nfixedrange:true,\nshowticklabels:false\n},\n")
+	web.write("yaxis: {\nrange: [0, 1.1],\nautorange:true,\nfixedrange:true\n},\nmargin: {\nt: 80,\nb:60,\nl:40,\nr:40,\npad:10\n},\nfont: {family:\"Arial, sans-serif\"},\ntitlefont: { size:16 },\nwidth: 250,\nheight: 300,\ntitle:\"%s\",\nshapes: [\n" % longname[name])
+
+	x0 = 0
+	for type in types:
+		writeBox(type, x0, stats[type], web)
+		x0 += 1
+	
+	#write data circle
+	#if lncType in types: web.write("{\ntype: 'circle',\nx0: %.1f,\ny0: %.1f,\nx1: %.1f,\ny1:%.1f\n}\n" % (types.index(lncType)-.1, data-.1, types.index(lncType)+.1, data+.1))
+	web.write("]\n};\nPlotly.plot('%s', data, layout, {showLink: false});\n</script>" % name)
+
+def inExon(base, start, sizes, starts):
+	for i in range(len(sizes)):
+		if sizes[i] == "": continue
+		#print base, (start + int(starts[i])), (start + int(starts[i]) + int(sizes[i]))
+		if base >= (start + int(starts[i])) and base < (start + int(starts[i]) + int(sizes[i])):
+			return True
+	return False
+def flip(base, start, end, hStrand, mStrand):
+	if hStrand == mStrand: return base
+	else: return (end - (base - start))
+
+def scale(base, hStart, hEnd, mStart, mEnd):
+	frac = (base * 1.0 - hStart) / (hEnd - hStart)
+	newBase = hStart + (frac * (mEnd - mStart * 1.0))
+	return newBase
+
+#def offset(base, mStart, hStart, ratio):
+#	return mStart + (base - hStart)
+
+def writeAlignment(lnc, orth, mouse, human, maf_dir, web):
+	global SPECIESA
+	global SPECIESB
+
+	mChr = mouse[0].strip()
+	mStart = int(mouse[1])
+	mEnd = int(mouse[2])
+	mStrand = mouse[5].strip()
+	mNumExons = int(mouse[9])
+	mExonSizes = mouse[10].split(",")
+	mExonStarts = mouse[11].split(",")
+
+	hChr = human[0].strip()
+	hStart = int(human[1])
+	hEnd = int(human[2])
+	hStrand = human[5].strip()
+	hNumExons = int(human[9])
+	hExonSizes = human[10].split(",")
+	hExonStarts = human[11].split(",")
+
+	offset = mStart - hStart
+
+	if not os.path.exists("%s/%s-%s.maf" % (maf_dir, lnc, orth)): return
+
+	maffile = open("%s/%s-%s.maf" % (maf_dir, lnc, orth))
+	counter = 0
+	for line in maffile.readlines():
+		if line[0] == "#": continue
+		if counter == 0:
+			score = line.split()
+		elif counter == 1:
+			mousemaf = line.split()
+		elif counter == 2:
+			humanmaf = line.split()
+		else:
+			break
+		counter += 1
+	web.write("<div id=\"align\" style=\"width;500px;height:500px;\"></div>\n")
+	web.write("<script>\n")
+	
+	mSize = int(mouse[2]) - int(mouse[1])	
+	hSize = int(human[2]) - int(human[1])
+	
+	if mSize > hSize: hSize = mSize
+
+	#print hSize, int(mouse[2]), int(mouse[1])+hSize
+	#write mouse axis
+	web.write("var trace2 = {\ny:[1.7, 1.7],\nx:[%d,%d],\nmode: 'lines',\nline: {\ncolor:\"rgba(255,255,255,0)\"\n},\nxaxis: 'x2',\nshowlegend:false,\nhoverinfo:\"none\"};\n" % (int(mouse[1]), int(mouse[1])+hSize))
+
+	#write human axis
+	web.write("var trace1 = {\ny:[1.3, 1.3],\nx:[%d,%d],\nmode: 'lines',\nline: {\ncolor:\"rgba(255,255,255,0)\"\n},\nshowlegend:false,\nhoverinfo:\"none\"};\n" % (hStart, hStart+hSize))
+
+	web.write("var data = [trace1, trace2];\n")
+
+	web.write("var layout={\n")
+	web.write("yaxis: {\nshowticklabels:false,\nshowgrid:false,\nrange: [1.1, 1.9]}\n,\n")
+	if hStrand == "-": web.write("xaxis: {title:'<em>%s</em><br><br>%s',\nrange: [%d, %d],\nexponentformat:\"none\",\nshowgrid:false,\ntitlefont: {size:18\n},\n},\n" % (hChr, SPECIESB, hStart + hSize, hStart))
+	else: web.write("xaxis: {title:'<em>%s</em><br><br>%s',\nexponentformat:\"none\",\nshowgrid:false,\ntitlefont: {size:18}\n},\n" % (hChr, SPECIESB))
+	if mStrand == "-": web.write("xaxis2: {\ntitle: '%s<br><br><em>%s</em>',\nrange: [%d, %d],\noverlaying: 'x',\nside: 'top',autorange:true,\nexponentformat:\"none\",\ntitlefont: {size:18\n},\n},\n" % (SPECIESA, mChr, mStart + hSize, mStart))
+	else: web.write("xaxis2: {\ntitle: '%s<br><br><em>%s</em>',\noverlaying: 'x',\nside: 'top',autorange:true,\nexponentformat:\"none\",\ntitlefont: {size:18}\n},\n" % (SPECIESA, mChr))
+	web.write("margin: {\nb:110,\nt:110\n},\n")
+	web.write("shapes: [\n")
+
+
+	if mStrand == "+": mBase = int(mousemaf[2])-1
+	else: 
+		mSrcSize = int(mousemaf[5])
+		mBase = mSrcSize - int(mousemaf[2])-1 
+	if hStrand == "+": hBase = int(humanmaf[2])-1
+	else: 
+		hSrcSize = int(humanmaf[5])
+		hBase = hSrcSize - int(humanmaf[2])-1
+
+	mStr = mousemaf[6]
+	hStr = humanmaf[6]
+	curMStr = ""
+	curHStr = ""
+	
+	if mStrand == "+": mStrand = 1
+	else: mStrand = -1
+	
+	if hStrand == "+": hStrand = 1
+	else: hStrand = -1
+
+
+	for i in range(len(mousemaf[6].strip())):
+		if mBase >= mStart and hBase >= hStart and mBase < mEnd and hBase < hEnd:
+			
+			if mStr[i].upper() == hStr[i].upper():
+				curMStr += mStr[i]
+				curHStr += hStr[i]
+				#if mBase >= 31300140 and mBase < 31300200:
+				#	print mBase, inExon(mBase, mStart, mExonSizes, mExonStarts), curMStr, curHStr, hBase, inExon(hBase, hStart, hExonSizes, hExonStarts)
+				#	print hBase, hStart, hExonSizes, hExonStarts
+			else:
+				if len(curMStr) > 0:
+					lenMStr = len(curMStr) * mStrand
+					lenHStr = len(curHStr) * hStrand 
+					#if mBase > 31300140 and mBase < 31300200:
+					#	print "draw!", 
+#						print "   from", mBase+(mStrand*-1), mBase+(mStrand*-1), inExon(mBase+(mStrand*-1), mStart, mExonSizes, mExonStarts), inExon(mBase+(mStrand*-1), mStart, mExonSizes, mExonS
+#						print "   to", mBase-lenMStr, hBase-lenHStr, inExon(mBase-lenMStr, mStart, mExonSizes, mExonStarts), inExon(hBase-lenHStr, hStart, hExonSizes, hExonStarts)
+					
+					if inExon(mBase+(mStrand*-1), mStart, mExonSizes, mExonStarts) and inExon(hBase+(hStrand*-1), hStart, hExonSizes, hExonStarts):
+						#if aligned region all in exon
+						if (inExon(mBase-lenMStr, mStart, mExonSizes, mExonStarts) and inExon(hBase-lenHStr, hStart, hExonSizes, hExonStarts)) :
+							#print hBase+(hStrand*-1) + (hStrand == 1), hBase-lenHStr + (hStrand == -1), curHStr, "exon"
+							web.write("{\ntype:'path',\npath: ' M %d,1.6 L%d,1.6 L%d,1.4 L%d,1.4 Z',\n xref: 'x2',\n fillcolor: 'rgb(249,197,200)',\nline: {\ncolor: 'rgb(249,197,200)',\nwidth: 1\n},\n},\n" % (mBase-lenMStr+ (mStrand == -1), mBase+(mStrand*-1) + (mStrand == 1), flip(hBase+(hStrand*-1) + (hStrand == 1) + offset, mStart, mStart+hSize, hStrand, mStrand), flip(hBase-lenHStr + (hStrand == -1)+ offset, mStart, mStart+hSize, hStrand, mStrand)))
+						else:
+							a = mBase - lenMStr
+							b = hBase - lenHStr
+							
+							if lenMStr > 0:
+								for x in range(lenMStr):
+									if (inExon(a+x, mStart, mExonSizes, mExonStarts) and inExon(b+(x*mStrand*hStrand), hStart, hExonSizes, hExonStarts)):
+										break
+							else:
+								for x in range(0, lenMStr, -1):
+									if (inExon(a+x, mStart, mExonSizes, mExonStarts) and inExon(b+(x*mStrand*hStrand), hStart, hExonSizes, hExonStarts)):
+										break
+							splitA = a+x
+							splitB = b+(x*mStrand*hStrand)
+
+							#write intron-exon
+							web.write("{\ntype:'path',\npath: ' M %d,1.6 L%d,1.6 L%d,1.4 L%d,1.4 Z',\n xref: 'x2',\n fillcolor: 'rgb(198,215,247)',\nline: {\ncolor: 'rgb(198,215,247)',\nwidth: 1\n},\n},\n" % (mBase-lenMStr + (mStrand == -1), splitA + (mStrand*-1) + (mStrand == 1), flip(splitB + (hStrand*-1) + (hStrand ==1)+offset, mStart, mStart+hSize, hStrand, mStrand), flip(hBase-lenHStr + (hStrand==-1) + offset, mStart, mStart+hSize, hStrand, mStrand)))
+							web.write("{\ntype:'path',\npath: ' M %d,1.6 L%d,1.6 L%d,1.4 L%d,1.4 Z',\n xref: 'x2',\n fillcolor: 'rgb(249,197,200)',\nline: {\ncolor: 'rgb(249,197,200)',\nwidth: 1\n},\n},\n" % (splitA + (mStrand == -1), mBase + (mStrand*-1) + (mStrand==1), flip(hBase + (hStrand*-1) + (hStrand==1) +offset, mStart, mStart+hSize, hStrand, mStrand), flip(splitB + (hStrand == -1)+offset, mStart, mStart+hSize, hStrand, mStrand)))
+
+
+					else:
+						if not inExon(mBase-lenMStr, mStart, mExonSizes, mExonStarts) or not inExon(hBase-lenHStr, hStart, hExonSizes, hExonStarts):
+
+							web.write("{\ntype:'path',\npath: ' M %d,1.6 L%d,1.6 L%d,1.4 L%d,1.4 Z',\n xref: 'x2',\n fillcolor: 'rgb(198,215,247)',\nline: {\ncolor: 'rgb(198,215,247)',\nwidth: 1\n},\n},\n" % (mBase-lenMStr + (mStrand == -1), mBase+(mStrand*-1) + (mStrand == 1), flip(hBase+(hStrand*-1) + (hStrand == 1)+offset, mStart, mStart+hSize, hStrand, mStrand), flip(hBase-lenHStr + (hStrand == -1)+offset, mStart, mStart+hSize, hStrand, mStrand)))
+
+						#split exon-intron
+						
+						else:
+							
+						
+							a = mBase-lenMStr
+							b = hBase-lenHStr
+							
+							if lenMStr > 0:
+								for x in range(lenMStr):
+									if not (inExon(a+x, mStart, mExonSizes, mExonStarts) and inExon(b+ (x * mStrand * hStrand), hStart, hExonSizes, hExonStarts)):
+										break
+							else:
+								for x in range(0, lenMStr, -1):
+									if not (inExon(a+x, mStart, mExonSizes, mExonStarts) and inExon(b+(x*mStrand*hStrand), hStart, hExonSizes, hExonStarts)):
+										break
+							
+							splitA = a+x
+							splitB = b+(x*mStrand*hStrand)
+							
+							web.write("{\ntype:'path',\npath: ' M %d,1.6 L%d,1.6 L%d,1.4 L%d,1.4 Z',\n xref: 'x2',\n fillcolor: 'rgb(249,197,200)',\nline: {\ncolor: 'rgb(249,197,200)',\nwidth: 1\n},\n},\n" % (mBase-lenMStr + (mStrand==-1), splitA + (mStrand*-1) + (mStrand == 1), flip(splitB + (hStrand*-1) + (hStrand==1)+offset, mStart, mStart+hSize, hStrand, mStrand), flip(hBase-lenHStr+(hStrand==-1)+offset, mStart, mStart+hSize, hStrand, mStrand)))
+							web.write("{\ntype:'path',\npath: ' M %d,1.6 L%d,1.6 L%d,1.4 L%d,1.4 Z',\n xref: 'x2',\n fillcolor: 'rgb(198,215,247)',\nline: {\ncolor: 'rgb(198,215,247)',\nwidth: 1\n},\n},\n" % (splitA + (mStrand == -1), mBase+(mStrand*-1) + (mStrand==1), flip(hBase+(hStrand*-1) + (hStrand==1)+offset, mStart, mStart+hSize, hStrand, mStrand), flip(splitB + (hStrand==-1)+offset, mStart, mStart+hSize, hStrand, mStrand)))
+
+
+					curMStr = ""
+					curHStr = ""
+	
+		if mStr[i] != "-": 
+			if mStrand == 1: mBase += 1
+			else: mBase -= 1
+		if hStr[i] != "-": 
+			if hStrand == 1: hBase += 1
+			else: hBase -=1
+	
+	for i in range(mNumExons):
+		start = mStart + int(mExonStarts[i])
+		end = start + int(mExonSizes[i])
+		web.write("{\ntype: 'rect',\n x0: %d,\n y0: 1.6,\n x1: %d,\n y1: 1.8,\n xref: 'x2',\n line: {\n color: 'rgb(127, 127, 127)',\nwidth: 2\n},\nfillcolor: 'rgb(127, 127, 127)'\n},\n" %(start, end))
+	web.write("{\ntype: 'line',\n x0: %d,\n y0: 1.7,\n x1: %d,\n y1: 1.7,\n xref: 'x2',\n line: {\n color: 'rgb(127, 127, 127)',\nwidth: 2\n}\n},\n" %(mStart, mEnd))
+	for i in range(hNumExons):
+		start = hStart + int(hExonStarts[i])
+		end = start + int(hExonSizes[i])
+		#web.write("{\ntype: 'rect',\n x0: %d,\n y0: 1.2,\n x1: %d,\n y1: 1.4,\n xref: 'x',\n line: {\n color: 'rgb(127, 127, 127)',\nwidth: 2\n},\nfillcolor: 'rgb(127, 127, 127)'\n},\n" %(start, end))
+		web.write("{\ntype: 'rect',\n x0: %d,\n y0: 1.2,\n x1: %d,\n y1: 1.4,\n xref: 'x2',\n line: {\n color: 'rgb(127, 127, 127)',\nwidth: 2\n},\nfillcolor: 'rgb(127, 127, 127)'\n},\n" %(flip(start+offset, mStart, mStart+hSize, mStrand, hStrand), flip(end+offset, mStart, mStart+hSize, mStrand, hStrand)))
+	web.write("{\ntype: 'line',\n x0: %d,\n y0: 1.3,\n x1: %d,\n y1: 1.3,\n xref: 'x',\n line: {\n color: 'rgb(127, 127, 127)',\nwidth: 2\n}\n},\n" %(hStart, hEnd))
+
+#	print numBlocks
+	web.write("]\n};\n")
+	web.write("Plotly.newPlot('align', data, layout, {showLink: false});\n")
+	web.write("</script>\n")
+
+
+def writeEachLnc(filename, human, mouse, maf_dir, prefix):
+	global humanBed
+	global mouseBed
+
+	for line in human.readlines():
+		splitline = line.split()
+		lncName = splitline[3].strip()
+		humanBed[lncName] = splitline
+
+	for line in mouse.readlines():
+		splitline = line.split()
+		lncName = splitline[3].strip()
+		mouseBed[lncName] = splitline
+
+
+	f = open(filename, 'r')
+	for line in f.readlines():
+		if line[0]=="#": continue
+		line = line.split('\t')
+		
+		lnc = line[0].strip()
+		orth = line[2].strip()
+		mAlt = line[1].strip()
+		hAlt = line[3].strip()
+
+		#get type
+		if line[13].strip() == line[14].strip(): type = line[13].strip()
+		else: type="intergenic"
+
+		curTti = float(line[5].strip())
+		curTgi = float(line[6].strip())
+
+		if line[8].strip() != "NA" and float(line[8].strip()) > 0 and float(line[7].strip()) > 0:
+			curIdr = math.log(float(line[7].strip()) / float(line[8].strip()), 2)
+			if type in IDR: IDR[type] = np.append(IDR[type], curIdr)
+		else:
+			curIdr = 'NA'
+
+		curSpliceCon = float(line[11])
+		curSpliceTotal = int(line[12])
+	
+		head = open(REALPATH+"templates/lncPageHeader.txt", 'r')
+		lncPage = open(prefix+"/lnc/"+lnc+".html", 'w')
+
+		for line in head.readlines():
+			lncPage.write(line)
+
+		global SPECIESA
+		global SPECIESB
+
+		lncPage.write("<h1>%s</h1><hr>\n" % lnc)
+		lncPage.write("<a href=\"http://genome.ucsc.edu/cgi-bin/hgTracks?db=%s&position=%s%%3A%s-%s\" target=\"_blank\">UCSC (%s) <img src=\"http://www.southcypress.com/site/images/graphics/icons/icon-new-window.gif\"></a>\n" % (SPECIESA, mouseBed[lnc][0], mouseBed[lnc][1], mouseBed[lnc][2], SPECIESA))
+		lncPage.write("&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href=\"http://genome.ucsc.edu/cgi-bin/hgTracks?db=%s&position=%s%%3A%s-%s\" target=\"_blank\">UCSC (%s) <img src=\"http://www.southcypress.com/site/images/graphics/icons/icon-new-window.gif\"></a>\n" % (SPECIESB, humanBed[orth][0], humanBed[orth][1], humanBed[orth][2], SPECIESB))
+		lncPage.write("<br><br><h4>Alignment</h4><hr>\n")
+		writeAlignment(lnc, orth, mouseBed[lnc], humanBed[orth], maf_dir, lncPage)
+		
+		lncPage.write("<br><br><h4>Evolutionary Metrics</h4><hr>\n")
+		writeBoxplot("TGI", lnc, curTgi, type, TGIStats, lncPage)
+		writeBoxplot("TTI", lnc, curTti, type, TTIStats, lncPage)
+		if curSpliceTotal > 0: 
+			curSsc = curSpliceCon / curSpliceTotal
+			writeBoxplot("SSC", lnc, curSsc, type, SSCStats, lncPage)
+		if curIdr != "NA":
+			writeBoxplot("IDR", lnc, curIdr, type, IDRStats, lncPage)
+
+REALPATH = ""
+SPECIESA = ""
+SPECIESB = ""
+
+ALLLNCS = set()
+
+def main():
+	parser = argparse.ArgumentParser(description='makeWebsite')
+	parser.add_argument('file', type=str, help='file')
+	parser.add_argument('specA', type=str)
+	parser.add_argument('specB', type=str)
+	parser.add_argument('mouse_bed', type=file)
+	parser.add_argument('human_bed', type=file)
+	parser.add_argument('maf_dir', type=str)
+	parser.add_argument('prefix', type=str)
+	args = parser.parse_args()
+	
+	global REALPATH
+	REALPATH = os.path.realpath(__file__)[0:-11]
+	
+	global SPECIESA
+	global SPECIESB
+	SPECIESA = args.specA
+	SPECIESB = args.specB
+
+	writeBrowse(args.file, args.prefix)
+	calculateStats()
+
+	if not os.path.exists(args.prefix+"lnc/"): os.system("mkdir %s/lnc" % args.prefix)
+	writeEachLnc(args.file, args.human_bed, args.mouse_bed, args.maf_dir, args.prefix)
+
+
+if __name__ == "__main__":
+	main()

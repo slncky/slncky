@@ -265,7 +265,7 @@ def checkForOrfs(stringA, stringB, baseA, baseB, pad, geneAStart, geneAEnd, exon
 		
 		if exonA != -1 and exonB != -1:
 			if stringA[i:i+3].upper() == "ATG" and stringB[i:i+3].upper() == "ATG":
-				print baseAGen
+				#print baseAGen
 				starts.append(i)
 				startBaseA.append(baseAGen)
 				startBaseB.append(baseBGen)
@@ -555,7 +555,6 @@ def main():
 					if spliceStart[i] == spliceEnd[i] - 1: numSpliceConserved += 1
 					elif spliceStart[i]> 0 or spliceEnd[i] > 0: numSpliceConserved += 0.5
 				#print "numSpliceConserved: ", numSpliceConserved
-
 				alignments.append([counter, geneAName, geneBName, exonId / (exonASize*1.0), id / (geneASize*1.0), exonId / (exonBSize*1.0), id / (geneBSize*1.0), indelRateNorm, indelRateIntronNorm, exonsAlignedA, exonsAlignedB, score, numSpliceConserved])
 					
 
