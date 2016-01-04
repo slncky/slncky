@@ -24,12 +24,12 @@
 
 ```
 
-# *slncky v2.0*
+## *slncky v2.0*
 
-This code was developed using *Python v2.7*.  *slncky* WILL NOT work with *Python v3.0*.  To check what version of python you are running, run python --version in your terminal.
+Please see http://slncky.github.io/ for all installation and usage instructions.
 
 
-## Dependencies
+### Dependencies
 
 This code depends on the following three software:
 
