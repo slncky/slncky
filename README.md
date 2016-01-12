@@ -24,7 +24,8 @@
 
 ```
 
-## *slncky v1.0*
+## *slncky v1.0*  [![DOI](https://zenodo.org/badge/19958/slncky/slncky.svg)](https://zenodo.org/badge/latestdoi/19958/slncky/slncky)
+
 
 Please see http://slncky.github.io/ for all installation and usage instructions.
 
