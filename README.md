@@ -24,7 +24,7 @@
 
 ```
 
-## *slncky v2.0*
+## *slncky v1.0*
 
 Please see http://slncky.github.io/ for all installation and usage instructions.
 
