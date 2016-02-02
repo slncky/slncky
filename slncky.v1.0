@@ -984,7 +984,7 @@ def main():
 	global REALPATH
 	global ALIGNTRANSCRIPTS
 	REALPATH = os.path.realpath(__file__)[0:-11]
-	ALIGNTRANSCRIPTS = REALPATH+"alignTranscripts2.0"
+	ALIGNTRANSCRIPTS = REALPATH+"alignTranscripts1.0"
 	if args.config is None: args.config = REALPATH+"annotations.config"
 
 	print args.config
