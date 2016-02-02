@@ -112,7 +112,7 @@ def writeBrowse(filename, prefix):
 		curTgi = float(line[6].strip())
 		if type in TGI: TGI[type] = np.append(TGI[type], [curTgi])
 
-		if line[8].strip() != "NA" and float(line[8].strip()) > 0 and float(line[7].strip()) > 0:
+		if line[8].strip() != "NA" and line[7].strip() != "NA" and float(line[8].strip()) > 0 and float(line[7].strip()) > 0:
 			curIdr = math.log(float(line[7].strip()) / float(line[8].strip()), 2)
 			if type in IDR: IDR[type] = np.append(IDR[type], curIdr)
 		else:
@@ -486,7 +486,7 @@ def writeEachLnc(filename, human, mouse, maf_dir, prefix):
 		curTti = float(line[5].strip())
 		curTgi = float(line[6].strip())
 
-		if line[8].strip() != "NA" and float(line[8].strip()) > 0 and float(line[7].strip()) > 0:
+		if line[8].strip() != "NA" and line[7].strip() != "NA" and float(line[8].strip()) > 0 and float(line[7].strip()) > 0:
 			curIdr = math.log(float(line[7].strip()) / float(line[8].strip()), 2)
 			if type in IDR: IDR[type] = np.append(IDR[type], curIdr)
 		else:
