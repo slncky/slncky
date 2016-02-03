@@ -306,6 +306,8 @@ def writeAlignment(lnc, orth, mouse, human, maf_dir, web):
 		else:
 			break
 		counter += 1
+	if counter == 0: return
+
 	web.write("<div id=\"align\" style=\"width;500px;height:500px;\"></div>\n")
 	web.write("<script>\n")
 	
