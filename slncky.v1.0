@@ -1368,14 +1368,16 @@ def main():
 			
 			if args.web:
 				print "Making website..."
-				if os.path.exists(args.out_prefix+"_browser/"):
-					print "          %s exists. overwriting..." % (args.out_prefix+"_browser/")
-					cmd = ['rm', '-rf', args.out_prefix+"_browser/"]
-					subprocess.call(cmd)
 				
-				os.mkdir(args.out_prefix+"_browser/")
+				pre = args.out_prefix+".EvolutionBrowser/"
 
-				cmd = [REALPATH+"makeWebsite", args.out_prefix+".orthologs.top.txt", args.assembly, ANNOTS["ORTHOLOG"][0], alignments_dir+args.assembly+".lincs.bed", alignments_dir+ANNOTS["ORTHOLOG"][0]+".lincs.bed", alignments_dir, args.out_prefix+"_browser/"]
+				if not os.path.exists(args.out_prefix+".EvolutionBrowser/"):
+					#print "          %s exists. overwriting..." % (args.out_prefix+".EvolutionBrowser/")
+					#cmd = ['rm', '-rf', args.out_prefix+".EvolutionBrowser/"]
+					#subprocess.call(cmd)
+					os.mkdir(args.out_prefix+".EvolutionBrowser/")
+
+				cmd = [REALPATH+"makeWebsite", args.out_prefix+".orthologs.top.txt", args.assembly, ANNOTS["ORTHOLOG"][0], alignments_dir+args.assembly+".lincs.bed", alignments_dir+ANNOTS["ORTHOLOG"][0]+".lincs.bed", alignments_dir, args.out_prefix+".EvolutionBrowser/"]
 				subprocess.check_call(cmd)
 
 				cmd = ['rm', '-rf', alignments_dir]
