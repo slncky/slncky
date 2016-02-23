@@ -927,8 +927,9 @@ def geneSymbol(lncs, ANNOTS):
 					if overlap > maxOverlap and line[15].strip() in GeneSymbol:
 						lncGeneSymbol = GeneSymbol[line[15].strip()]
 						maxOverlap = overlap
-			lncToGeneSymbol[lnc] = lncGeneSymbol
 			os.remove(curLncFile)
+		
+		lncToGeneSymbol[lnc] = lncGeneSymbol
 
 	return lncToGeneSymbol
 
@@ -1070,13 +1071,16 @@ def main():
 		
 		#INITIALIZE WEBSITE
 		if args.web:
-			pre = args.out_prefix+".EvolutionBrowser/"
-			if os.path.exists(pre):
-				cmd = ['rm', '-rf', pre]
-				subprocess.check_call(cmd)
+			if args.no_orth_search:
+				print "WARNING: --no_orth_search (-1) flag is TRUE so no website will be made."
+			else:
+				pre = args.out_prefix+".EvolutionBrowser/"
+				if os.path.exists(pre):
+					cmd = ['rm', '-rf', pre]
+					subprocess.check_call(cmd)
 
-			cmd = ['mkdir', pre]
-			subprocess.check_call(cmd)
+				cmd = ['mkdir', pre]
+				subprocess.check_call(cmd)
 			
 
 		##REMOVE TRANSCRIPTS THAT INTERSECT WITH CODING GENES##
