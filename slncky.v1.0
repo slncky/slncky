@@ -888,12 +888,12 @@ def categorizeLncsByAnnots(lncs, ANNOTS):
 			if dist <=500  and lnc not in lncToCategory: 
 				lncToCategory[lnc] = "divergent"
 		
-		for lnc in lncs:
-			if lnc not in lncToCategory: lncToCategory[lnc] = "intergenic"
+	for lnc in lncs:
+		if lnc not in lncToCategory: lncToCategory[lnc] = "intergenic"
 
-		#cleanup
-		cmd = ['rm', curLncFile]
-		subprocess.call(cmd)
+	#cleanup
+	cmd = ['rm', curLncFile]
+	subprocess.call(cmd)
 	
 	return lncToCategory
 
@@ -1302,20 +1302,23 @@ def main():
 
 			#MAKE ORTHOLOG BED DICT
 			orthologDict = {}
-			for entry in ORTHOLOGS:
-				if entry[1] not in orthologDict:
-					orthologDict[entry[1]] = ""
+			
 			for file in ORTH_ANNOTS["NONCODING"]:
 				bed = open(file, 'r')
 				for line in bed.readlines():
 					splitline = line.split()
-					if splitline[3].strip() in orthologDict:
+					if splitline[3].strip() not in orthologDict:
 						orthologDict[splitline[3].strip()] = line
 				bed.close()
 			
+
+			for entry in ORTHOLOGS:
+				if entry[1] not in orthologDict:
+					orthologDict[entry[1]] = ""
+		
 			orthToCategory = categorizeLncsByAnnots(orthologDict, ORTH_ANNOTS)
 			orthToGeneSymbol = geneSymbol(orthologDict, ORTH_ANNOTS)
-			
+		
 			#FILTER TOP ORTHOLOGS
 			ORTHOLOGS.sort(key = lambda x: (x[0], x[1], x[2], x[3], x[7]), reverse=True)
 
