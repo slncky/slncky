@@ -319,8 +319,8 @@ def alignTranscripts(lncPath, fa, orthPath, orthFa, tmpPath, FILTER, null, keep,
 			line = line.split()
 			if len(line)>1 and line[4].strip() != "exonID_A":
 				alignScore = line[1]
-				geneA = line[2]
-				geneB = line[3]
+				geneA = line[2].strip()
+				geneB = line[3].strip()
 				exonID = float(line[4])
 				seqID = float(line[5])
 				indelRate = line[8]
@@ -900,7 +900,7 @@ def categorizeLncsByAnnots(lncs, ANNOTS):
 def geneSymbol(lncs, ANNOTS):
 	lncToGeneSymbol = {}
 	GeneSymbol = {}
-
+	
 	if "GENESYMBOL" in ANNOTS:
 	#load gene symbol file into dict
 		genesymbol = open(ANNOTS["GENESYMBOL"][0], 'r').readlines()
@@ -1303,19 +1303,20 @@ def main():
 			#MAKE ORTHOLOG BED DICT
 			orthologDict = {}
 			
+			for entry in ORTHOLOGS:
+				if entry[1] not in orthologDict:
+					orthologDict[entry[1]] = ""
+			
 			for file in ORTH_ANNOTS["NONCODING"]:
 				bed = open(file, 'r')
 				for line in bed.readlines():
 					splitline = line.split()
-					if splitline[3].strip() not in orthologDict:
+					if splitline[3].strip() in orthologDict:
 						orthologDict[splitline[3].strip()] = line
 				bed.close()
 			
 
-			for entry in ORTHOLOGS:
-				if entry[1] not in orthologDict:
-					orthologDict[entry[1]] = ""
-		
+			
 			orthToCategory = categorizeLncsByAnnots(orthologDict, ORTH_ANNOTS)
 			orthToGeneSymbol = geneSymbol(orthologDict, ORTH_ANNOTS)
 		
