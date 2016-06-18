@@ -368,8 +368,8 @@ def blastToOrtholog(lncs, annots, orth_annots, blastTo, n, alignments_dir, minMa
 
 
 	#liftover
-	if multiple: cmd = "cut -f1-4 %s | %s -i - -g %s -b %d | %s -minMatch=%.3f -multiple /dev/stdin %s /dev/stdout %s" % (lncFile, SLOPBED, annots["GENOME_FA"][0]+".fai", pad, LIFTOVER, minMatch, annots["LIFTOVER"][0], unmappedPath)
-	else: cmd = "cut -f1-4 %s | %s -i - -g %s -b %d | %s -minMatch=%.3f /dev/stdin %s /dev/stdout %s" % (lncFile, SLOPBED, annots["GENOME_FA"][0]+".fai", pad, LIFTOVER, minMatch, annots["LIFTOVER"][0], unmappedPath)
+	if multiple: cmd = "cut -f1-4 %s | %s -i - -g %s -b %d | awk '{if ($2<$3) print $0}' | %s -minMatch=%.3f -multiple /dev/stdin %s /dev/stdout %s" % (lncFile, SLOPBED, annots["GENOME_FA"][0]+".fai", pad, LIFTOVER, minMatch, annots["LIFTOVER"][0], unmappedPath)
+	else: cmd = "cut -f1-4 %s | %s -i - -g %s -b %d | awk '{if ($2<$3) print $0}' | %s -minMatch=%.3f /dev/stdin %s /dev/stdout %s" % (lncFile, SLOPBED, annots["GENOME_FA"][0]+".fai", pad, LIFTOVER, minMatch, annots["LIFTOVER"][0], unmappedPath)
 	
 	if len(annots["LIFTOVER"]) > 1:
 		for i in range(1,len(annots["LIFTOVER"])):
@@ -550,6 +550,7 @@ def selfBlast(lncs, annots, file, n, no_collapse):
 			for lnc, item in lncs.iteritems():
 				if lnc in subLncList:
 					subLncs[lnc] = item
+			print len(subLncs)
 			lncFile = writeToTmp(subLncs)
 		else:
 			lncFile = writeToTmp(lncs)
@@ -561,10 +562,12 @@ def selfBlast(lncs, annots, file, n, no_collapse):
 		#make shuffled target fasta
 		for i in range(200):
 			cmd = [SHUFFLEBED, '-i', lncFile, '-g', annots["GENOME_FA"][0]+".fai", '-excl', annots["CODING"][0]]
+			#print cmd
 			out = subprocess.check_output(cmd)
 			shuffleLncBed.write(out)
 		shuffleLncBed.close()
 		cmd = [FASTAFROMBED, '-s', '-fi', annots["GENOME_FA"][0], '-bed', shuffleLncPath, '-fo', queryLncFaPath[0], '-split', '-name']
+		print cmd
 		subprocess.call(cmd)
 		cmd = ['rm', shuffleLncPath]
 		subprocess.call(cmd)
