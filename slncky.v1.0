@@ -1292,6 +1292,15 @@ def main():
 			else: orfFlag = True
 
 			ORTHOLOGS, ORFS = blastToOrtholog(lncs, ANNOTS, ORTH_ANNOTS, "NONCODING", args.threads, alignments_dir, args.minMatch, True, args.pad, args.gap_open, args.gap_extend, shuffle, orfFlag)
+
+			if args.min_noncoding is not None: 
+				tmp = []
+				for entry in ORTHOLOGS:
+					if entry[2] >= args.min_noncoding:
+						tmp.append(entry)
+				ORTHOLOGS = tmp
+				del(tmp)
+			
 			print "         Found..."
 			tmpLncs, numRemoved = removeLncs(lncs, ORTHOLOGS)
 			print "\r              ... %d transcripts with noncoding ortholog!                                                                                 " % numRemoved
