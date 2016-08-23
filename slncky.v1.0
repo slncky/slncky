@@ -550,7 +550,7 @@ def selfBlast(lncs, annots, file, n, no_collapse):
 			for lnc, item in lncs.iteritems():
 				if lnc in subLncList:
 					subLncs[lnc] = item
-			print len(subLncs)
+			#print len(subLncs)
 			lncFile = writeToTmp(subLncs)
 		else:
 			lncFile = writeToTmp(lncs)
@@ -567,7 +567,7 @@ def selfBlast(lncs, annots, file, n, no_collapse):
 			shuffleLncBed.write(out)
 		shuffleLncBed.close()
 		cmd = [FASTAFROMBED, '-s', '-fi', annots["GENOME_FA"][0], '-bed', shuffleLncPath, '-fo', queryLncFaPath[0], '-split', '-name']
-		print cmd
+		#print cmd
 		subprocess.call(cmd)
 		cmd = ['rm', shuffleLncPath]
 		subprocess.call(cmd)
