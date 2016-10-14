@@ -38,10 +38,10 @@ def checkDependencies():
 	version = out[1][1:].split(".")
 	if int(version[0]) < 2 or int(version[1]) < 17:
 		sys.exit("ERROR: The version of bedtools you have installed is too old. You must have bedtools v2.17.0 or higher in your path! Exiting...")
-	
+	if int(version[1]) >= 25:
+		sys.exit("ERROR: Unfortunately, slncky is not compatible with bedtools v2.25 or higher :( Please use an older version of bedtools.  Exiting...")
 	if int(version[1]) >=20:
 		NEWBED = True
-
 	#check lastz
 	cmd = [LASTZ, '--version']
 	try:
@@ -490,7 +490,10 @@ def readMaf(maf, FILTER):
 		if line.startswith("a score"):
 			score = line.split("=")[1]
 		if i % 8 == 0:
-			identity = line.split(" ")[2].strip()[1:-2]
+			if (len(line.split(" ")) > 2):
+				identity = line.split(" ")[2].strip()[1:-2]
+			else:
+				identity = 0
 		if i % 8 == 1:
 			coverage = line.split(" ")[2].strip()[1:-2]
 		if i % 8 == 2:
@@ -1044,6 +1047,8 @@ def main():
 	bed = open(args.bedfile, 'r')
 	for line in bed.readlines():
 		splitline = line.split()
+		if len(splitline) != 12:
+			sys.exit("ERROR: The following line in your input file is not in bed12 format\n%s\nPlease see https://genome.ucsc.edu/FAQ/FAQformat.html#format1 for correct bed12 format." %line)
 		lncs[splitline[3].strip()] = line
 	bed.close()
 	ogLncs = deepcopy(lncs)
