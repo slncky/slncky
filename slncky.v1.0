@@ -531,6 +531,8 @@ def selfBlastOneLnc(curLnc, lncs, FILTER, tmpPath, remove):
 	FILTER.put(0)
 
 def selfBlast(lncs, annots, file, n, no_collapse):
+	if (n > 1): n = n*8
+
 	queue = Queue()
 
 	processes = []
@@ -618,8 +620,9 @@ def selfBlast(lncs, annots, file, n, no_collapse):
 		while True:
 			counter = 0
 			for p in processes:
-				if p.is_alive(): counter += 1
-			if counter < n*8: break
+				if p.is_alive(): counter += 1			
+			
+			if counter < n: break
 			else: 
 				queue.put('STOP')
 				for item in iter(queue.get, 'STOP'):
@@ -1170,7 +1173,7 @@ def main():
 			lncs, SELF_BLAST_FILTER, finalClusters = selfBlastFilter(lncs, lncShuffleScores, ANNOTS, args.threads, args.min_cluster, args.no_collapse)
 
 		
-			#get stats on final clustters
+			#get stats on final clusters
 			if len(finalClusters)> 0:
 				sizeDict = {}
 				for cluster in finalClusters:
