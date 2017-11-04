@@ -4,7 +4,7 @@
 <!-- DataTables CSS -->
 <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.10.9/css/jquery.dataTables.css">
 <!-- Bootstrap CSS -->
-<link rel="stylesheet" type="text/css" href="https://bootswatch.com/paper/bootstrap.min.css">
+<link rel="stylesheet" type="text/css" href="../bootswatch-paper.css">
 <!-- jQuery -->
 <script type="text/javascript" charset="utf8" src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
 

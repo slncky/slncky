@@ -5,9 +5,9 @@
 <!-- DataTables CSS -->
 <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.10.9/css/jquery.dataTables.css">
 <!-- Bootstrap CSS -->
-<link rel="stylesheet" type="text/css" href="https://bootswatch.com/paper/bootstrap.min.css">
+<link rel="stylesheet" type="text/css" href="bootswatch-paper.css">
 <!-- jQuery -->
-<script type="text/javascript" charset="utf8" src="https://code.jquery.com/jquery-1.11.3.min.js"></script>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
 
 <!-- DataTables -->
 <script type="text/javascript" charset="utf8" src="https://cdn.datatables.net/1.10.9/js/jquery.dataTables.min.js"></script>

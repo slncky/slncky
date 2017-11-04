@@ -5,6 +5,7 @@ import argparse
 import operator
 import numpy as np
 import math
+from shutil import copyfile
 
 names = {}
 humanBed = {}
@@ -86,6 +87,8 @@ def writeBrowse(filename, prefix):
 	global SSC
 	global IDR
 	global REALPATH
+	
+	copyfile(REALPATH+'/templates/bootswatch-paper.css', prefix+'bootswatch-paper.css')
 
 	browse = open(prefix+'browse.html', 'w')
 	

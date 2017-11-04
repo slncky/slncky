@@ -988,7 +988,7 @@ def main():
 	parser.add_argument('--lastz', type=str, help='path to lastz')
 	parser.add_argument('--gap_open', type=str, default='200')
 	parser.add_argument('--gap_extend', type=str, default='40')
-	parser.add_argument('--web', action='store_true', help='flag if you don\'t want website written visualizing transcripts that were filtered out')
+	parser.add_argument('--web', action='store_true', help='flag for if you want slncky to create a website visualizing results')
 	args = parser.parse_args()
 	
 	global REALPATH
