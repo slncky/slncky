@@ -915,7 +915,7 @@ def geneSymbol(lncs, ANNOTS):
 		genesymbol = open(ANNOTS["GENESYMBOL"][0], 'r').readlines()
 		for line in genesymbol:
 			line = line.split()
-			GeneSymbol[line[0].strip()] = line[1].strip()
+			if (len(line) > 1): GeneSymbol[line[0].strip()] = line[1].strip()
 	
 	for lnc in lncs:
 		lncGeneSymbol = "Unannotated"
