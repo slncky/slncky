@@ -829,6 +829,7 @@ def categorizeLncsByAnnots(lncs, ANNOTS):
 	if "CODING" not in ANNOTS:
 		print "WARNING!: coding annotations not found for lnc categorization"
 	lncToCategory = {}
+	if len(lncs) == 0: return lncToCategory
 
 	curLncFile = writeToTmp(lncs)
 	
