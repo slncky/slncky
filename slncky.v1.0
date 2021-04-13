@@ -120,7 +120,7 @@ def readAnnots(config_path, assembly):
 			print "WARNING: no genome fasta file was supplied in annotations.config for %s.  Cannot align to find duplications or matches to orthologous coding genes." %assembly
 		else:
 			if not os.path.isfile(ANNOTS['GENOME_FA'][0]+".fai"):
-				sys.exit("ERROR: fa index does not exist for %s. Please use samtools faidx to index .fa file."  % ANNOTS[GENOME_FA][0])
+				sys.exit("ERROR: fa index does not exist for %s. Please use samtools faidx to index .fa file."  % ANNOTS['GENOME_FA'][0])
 	
 	return ANNOTS
 
